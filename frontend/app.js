@@ -192,6 +192,8 @@
     }
     actions.appendChild(newRoundBtn)
 
+    actions.style.display = isFac ? 'block' : 'none';
+
     // ── Story editing ──────────────────────────────────────────
     if (storyEl) {
       const editBtn = qs('#edit-story')
