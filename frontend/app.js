@@ -118,6 +118,9 @@
       const payload = (typeof msg.payload === 'string') ? JSON.parse(msg.payload) : msg.payload
       if (msg.type === 'state_update') renderRoom(payload)
       if (msg.type === 'error') console.error('server error', payload)
+      if (payload.code === 'name_taken') {
+        location.href = `/?error=name_taken&name=${encodeURIComponent(name)}`
+      }
     }
 
     ws.onclose = () => attemptReconnect()

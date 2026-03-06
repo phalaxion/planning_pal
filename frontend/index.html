@@ -144,6 +144,15 @@
       })
 
       renderRecent()
+
+      const error = new URLSearchParams(location.search).get('error')
+      const errorName = new URLSearchParams(location.search).get('name')
+      if (error === 'name_taken') {
+        const msg = document.createElement('div')
+        msg.style.cssText = 'margin-bottom:16px;padding:10px 14px;border-radius:8px;background:#fef2f2;border:1px solid rgba(185,28,28,0.15);color:#b91c1c;font-size:13px;font-weight:500'
+        msg.textContent = `"${errorName}" is already taken in that room. Please choose a different name.`
+        document.querySelector('.card').prepend(msg)
+      }
     </script>
   </body>
 </html>

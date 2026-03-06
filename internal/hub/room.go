@@ -109,6 +109,29 @@ func (r *Room) run() {
 
 		case c := <-r.register:
 			log.Printf("room %s: register client=%s name=%s (before) count=%d", r.ID, c.id, c.name, len(r.participants))
+
+			nameTaken := false
+			for _, existing := range r.participants {
+				if existing.id != c.id && existing.name == c.name {
+					nameTaken = true
+					break
+				}
+			}
+
+			if nameTaken {
+				errMsg, _ := json.Marshal(models.Message{
+					Type: "error",
+					Payload: mustMarshal(map[string]string{
+						"code":    "name_taken",
+						"message": "That name is already taken in this room",
+					}),
+				})
+				go func(client *Client) {
+					client.send <- errMsg
+				}(c)
+				break
+			}
+
 			// if an existing client with same id exists, close its connection (treat as reconnect)
 			if existing, ok := r.participants[c.id]; ok && existing != c {
 				existing.conn.Close()
@@ -140,11 +163,18 @@ func (r *Room) run() {
 			log.Printf("room %s: registered client=%s name=%s (after) count=%d", r.ID, c.id, c.name, len(r.participants))
 
 		case c := <-r.unregister:
+			// If this client was never registered (e.g. rejected for name_taken), just close and skip
+			if _, ok := r.participants[c.id]; !ok {
+				close(c.send)
+				continue
+			}
+
 			// ignore stale unregisters (happens when an old connection is closed after a reconnect)
 			if cur, ok := r.participants[c.id]; ok && cur != c {
 				// stale unregister; do nothing
 				continue
 			}
+
 			log.Printf("room %s: unregister client=%s name=%s (before) count=%d", r.ID, c.id, c.name, len(r.participants))
 			delete(r.participants, c.id)
 			// remove from order slice
