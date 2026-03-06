@@ -197,6 +197,13 @@
       const nameEl = document.createElement('div')
       nameEl.className = 'p-name' + (isYou ? ' is-you' : '')
       nameEl.textContent = pt.name
+      if (pt.id === state.facilitatorId) {
+        const crown = document.createElement('span')
+        crown.textContent = '♛'
+        crown.title = 'Facilitator'
+        crown.style.cssText = 'position:absolute;top:-12px;left:50%;transform:translateX(-50%);font-size:20px;color:var(--accent);line-height:1'
+        card.appendChild(crown)
+      }
       card.appendChild(nameEl)
 
       p.appendChild(card)
