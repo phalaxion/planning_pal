@@ -1,0 +1,370 @@
+/* ============================================================
+   Planning Poker — shared stylesheet
+   poker.css
+   ============================================================ */
+
+/* Google Fonts — include this link in every page's <head>:
+   <link rel="preconnect" href="https://fonts.googleapis.com">
+   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+*/
+
+/* ── Design tokens ────────────────────────────────────────── */
+:root {
+  --bg:           #f5f3ee;
+  --surface:      #faf9f6;
+  --ink:          #1a1714;
+  --ink-muted:    #7a736a;
+  --ink-faint:    #c8c2b8;
+  --accent:       #d4622a;
+  --accent-pale:  #fdf0e8;
+  --border:       rgba(26,23,20,0.08);
+  --radius:       10px;
+  --mono:         'DM Mono', monospace;
+  --serif:        'DM Serif Display', serif;
+  --sans:         'Instrument Sans', system-ui, sans-serif;
+}
+
+/* ── Reset ────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Base ─────────────────────────────────────────────────── */
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100svh;
+  padding: 24px;
+}
+
+/* Subtle grid texture */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(26,23,20,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26,23,20,0.025) 1px, transparent 1px);
+  background-size: 32px 32px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+main {
+  position: relative;
+  z-index: 1;
+  animation: fadeUp 0.4s ease both;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Typography ───────────────────────────────────────────── */
+h1 {
+  font-family: var(--serif);
+  font-size: clamp(28px, 6vw, 38px);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--ink);
+}
+
+h1 em {
+  font-style: italic;
+  color: var(--accent);
+}
+
+h2 {
+  font-family: var(--serif);
+  font-size: clamp(20px, 4vw, 26px);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+h3 {
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.tagline {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ink-muted);
+  letter-spacing: 0.02em;
+}
+
+/* ── Logo / branding ──────────────────────────────────────── */
+.logo-area {
+  margin-bottom: 36px;
+  text-align: center;
+}
+
+.logo-pip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.pip-icon {
+  width: 28px;
+  height: 28px;
+  background: var(--accent);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 15px;
+}
+
+/* ── Card surface ─────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 1px 3px rgba(26,23,20,0.04), 0 8px 32px rgba(26,23,20,0.06);
+}
+
+/* ── Form elements ────────────────────────────────────────── */
+.field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 7px;
+}
+
+.input-wrap {
+  position: relative;
+}
+
+.input-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-faint);
+  font-size: 15px;
+  pointer-events: none;
+  line-height: 1;
+}
+
+input[type="text"],
+input:not([type]) {
+  width: 100%;
+  font-family: var(--sans);
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 11px 14px 11px 36px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  -webkit-appearance: none;
+}
+
+input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(212,98,42,0.12);
+}
+
+input::placeholder {
+  color: var(--ink-faint);
+}
+
+/* ── Divider ──────────────────────────────────────────────── */
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 22px 0;
+  color: var(--ink-faint);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+}
+
+.divider::before, .divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ── Buttons ──────────────────────────────────────────────── */
+.btn {
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  border: none;
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s, background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.btn:active { transform: translateY(1px); }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(212,98,42,0.28);
+}
+
+.btn-primary:hover {
+  background: #c2561f;
+  box-shadow: 0 6px 18px rgba(212,98,42,0.34);
+}
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(26,23,20,0.04);
+}
+
+.btn-secondary:hover {
+  background: #fff;
+  border-color: rgba(26,23,20,0.14);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink-muted);
+  border: 1px solid transparent;
+}
+
+.btn-ghost:hover {
+  background: rgba(26,23,20,0.04);
+  color: var(--ink);
+}
+
+/* full-width utility */
+.btn-full { width: 100%; }
+
+/* ── Join row ─────────────────────────────────────────────── */
+.join-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.join-row input {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.join-row .btn {
+  flex-shrink: 0;
+  padding: 11px 18px;
+}
+
+/* ── Recent rooms chips ───────────────────────────────────── */
+.recent-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.recent-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 10px;
+}
+
+.recent-chip {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  padding: 6px 12px;
+  border-radius: 100px;
+  background: var(--accent-pale);
+  color: var(--accent);
+  border: 1px solid rgba(212,98,42,0.15);
+  cursor: pointer;
+  transition: background 0.12s, transform 0.1s;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.recent-chip:hover { background: #fbe5d5; transform: translateY(-1px); }
+.recent-chip:active { transform: translateY(0); }
+
+/* ── Badge / pill ─────────────────────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 3px 8px;
+  border-radius: 100px;
+  background: var(--accent-pale);
+  color: var(--accent);
+  border: 1px solid rgba(212,98,42,0.15);
+}
+
+/* ── Utility text ─────────────────────────────────────────── */
+.text-muted   { color: var(--ink-muted); }
+.text-faint   { color: var(--ink-faint); }
+.text-accent  { color: var(--accent); }
+.text-mono    { font-family: var(--mono); }
+.text-sm      { font-size: 13px; }
+.text-xs      { font-size: 11px; }
+.uppercase    { text-transform: uppercase; letter-spacing: 0.08em; }
+
+/* ── Spacing helpers ──────────────────────────────────────── */
+.mt-sm  { margin-top: 8px; }
+.mt-md  { margin-top: 16px; }
+.mt-lg  { margin-top: 28px; }
+.mb-sm  { margin-bottom: 8px; }
+.mb-md  { margin-bottom: 16px; }
+
+/* ── Footer ───────────────────────────────────────────────── */
+footer {
+  position: relative;
+  z-index: 1;
+  margin-top: 28px;
+  font-size: 12px;
+  color: var(--ink-faint);
+  text-align: center;
+}
+
+/* ── No-content placeholder ───────────────────────────────── */
+.no-content {
+  font-size: 13px;
+  color: var(--ink-faint);
+}
+
+/* ── Responsive ───────────────────────────────────────────── */
+@media (max-width: 600px) {
+  body { padding: 16px; }
+  .card { padding: 20px; }
+}
