@@ -381,7 +381,6 @@
         <span id="story-controls">
           <button id="edit-story" class="btn btn-ghost" title="Edit story" style="padding:4px 8px;font-size:13px">✎ Edit</button>
           <button id="save-story" class="btn btn-primary" hidden style="padding:6px 12px;font-size:13px">Save</button>
-          <button id="cancel-story" class="btn btn-ghost" hidden style="padding:6px 12px;font-size:13px">Cancel</button>
         </span>
       </div>
     </header>
@@ -420,5 +419,20 @@
     <pre id="debug">debug</pre>
 
     <script src="/static/app.js"></script>
+
+    <div id="story-modal" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(26,23,20,0.4);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+      <div class="card" style="width:100%;max-width:420px;margin:24px">
+        <div style="font-family:var(--serif);font-size:22px;margin-bottom:16px">New round</div>
+        <label class="field-label" for="modal-story-input">Story label</label>
+        <div class="input-wrap">
+          <span class="input-icon">✦</span>
+          <input type="text" id="modal-story-input" placeholder="e.g. USER-342 — Add dark mode" autocomplete="off" />
+        </div>
+        <div style="display:flex;gap:8px;margin-top:20px">
+          <button id="modal-confirm" class="btn btn-primary btn-full">Start round →</button>
+          <button id="modal-cancel" class="btn btn-secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

@@ -119,13 +119,11 @@
 
       document.addEventListener('DOMContentLoaded', renderRecent)
 
-      document.getElementById('create').addEventListener('click', () => {
+      document.getElementById('create').addEventListener('click', async () => {
         const name = getName()
         const room = randRoom()
-        const story = prompt('Story label (optional)', '') || ''
         saveRecent(room)
-        const qs = `name=${name}` + (story ? `&story=${encodeURIComponent(story)}` : '')
-        location.href = `/room/${room}?${qs}`
+        location.href = `/room/${room}?name=${name}`
       })
 
       document.getElementById('join').addEventListener('click', () => {

@@ -4,10 +4,18 @@
   const roomId = path[2]
   const params = new URLSearchParams(location.search)
   const nameParam = params.get('name')
-  const initialStory = params.get('story') || ''
   const showDebug = params.get('debug') === '1' || params.get('debug') === 'true'
 
-  qs('#roomcode').textContent = roomId
+  const roomcodeEl = qs('#roomcode')
+  roomcodeEl.textContent = roomId
+  roomcodeEl.style.cursor = 'pointer'
+  roomcodeEl.title = 'Click to copy invite link'
+  roomcodeEl.addEventListener('click', () => {
+    navigator.clipboard.writeText(location.href).then(() => {
+      roomcodeEl.textContent = '✓ Copied!'
+      setTimeout(() => roomcodeEl.textContent = roomId, 1500)
+    })
+  })
 
   let ws = null
   let attempts = 0
@@ -18,9 +26,7 @@
   let clientId = sessionStorage.getItem(clientKey)
   const globalNameKey = 'planning_pal.lastName'
   let name = nameParam || sessionStorage.getItem(nameKey) || localStorage.getItem(globalNameKey) || 'Player'
-
-  // Track currently selected card to highlight it
-  let selectedCard = null
+  let __storyPrompted = false
 
   function ensureClientId() {
     if (clientId) return clientId
@@ -31,7 +37,11 @@
 
   function setStatus(text) {
     const el = qs('#status')
-    if (el) el.textContent = text
+
+    if (el) {
+        el.textContent = text
+        el.style.display = text ? 'inline-block' : 'none'
+    }
   }
 
   function saveRecent(room) {
@@ -43,6 +53,43 @@
       arr.unshift(room)
       localStorage.setItem(key, JSON.stringify(arr.slice(0, 3)))
     } catch(e) {}
+  }
+
+  function showStoryModal(defaultVal = '') {
+    return new Promise(resolve => {
+      const modal = qs('#story-modal')
+      const input = qs('#modal-story-input')
+      input.value = defaultVal
+      modal.style.display = 'flex'
+      input.focus()
+
+      function confirm() {
+        modal.style.display = 'none'
+        resolve(input.value.trim())
+        cleanup()
+      }
+      function cancel() {
+        modal.style.display = 'none'
+        resolve(null)
+        cleanup()
+      }
+      function cleanup() {
+        qs('#modal-confirm').removeEventListener('click', confirm)
+        qs('#modal-cancel').removeEventListener('click', cancel)
+        modal.removeEventListener('click', onBackdrop)
+        input.removeEventListener('keydown', onKey)
+      }
+      function onBackdrop(e) { if (e.target === modal) cancel() }
+      function onKey(e) {
+        if (e.key === 'Enter') confirm()
+        if (e.key === 'Escape') cancel()
+      }
+
+      qs('#modal-confirm').addEventListener('click', confirm)
+      qs('#modal-cancel').addEventListener('click', cancel)
+      modal.addEventListener('click', onBackdrop)
+      input.addEventListener('keydown', onKey)
+    })
   }
 
   function connect() {
@@ -59,10 +106,6 @@
       attempts = 0
       setStatus('')
       saveRecent(roomId)
-      if (initialStory && !window.__initialStorySent) {
-        send('set_story', { story: initialStory })
-        window.__initialStorySent = true
-      }
       while (sendQueue.length) ws.send(sendQueue.shift())
     }
 
@@ -104,6 +147,14 @@
   function renderRoom(state) {
     const youId = state.youId
     const isFac = state.facilitatorId && youId && state.facilitatorId === youId
+
+    if (isFac && !state.story && !__storyPrompted) {
+      __storyPrompted = true
+      setTimeout(async () => {
+        const story = await showStoryModal()
+        if (story) send('set_story', { story })
+      }, 300)
+    }
 
     // ── Story ──────────────────────────────────────────────────
     const storyEl = qs('#story')
@@ -186,11 +237,23 @@
     newRoundBtn.innerHTML = '↺ New round'
     newRoundBtn.disabled = !isFac
     if (!isFac) newRoundBtn.style.opacity = '0.4'
-    newRoundBtn.onclick = () => {
-      const story = prompt('New story label', '') || ''
-      send('new_round', { story })
+    newRoundBtn.onclick = async () => {
+      const story = await showStoryModal()
+      if (story !== null) send('new_round', { story })
     }
     actions.appendChild(newRoundBtn)
+
+    const exportBtn = document.createElement('button')
+    exportBtn.className = 'btn btn-ghost'
+    exportBtn.textContent = '↓ Export CSV'
+    exportBtn.onclick = () => {
+      const rows = [['Story','Timestamp',...(state.history[0] ? Object.keys(state.history[0].votes) : [])]]
+      state.history.forEach(h => rows.push([h.story, new Date(h.timestamp).toLocaleString(), ...Object.values(h.votes||{})]))
+      const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
+      const a = Object.assign(document.createElement('a'), {href:'data:text/csv;charset=utf-8,'+encodeURIComponent(csv), download:`poker-${roomId}.csv`})
+      a.click()
+    }
+    actions.appendChild(exportBtn)
 
     actions.style.display = isFac ? 'block' : 'none';
 
@@ -198,7 +261,6 @@
     if (storyEl) {
       const editBtn = qs('#edit-story')
       const saveBtn = qs('#save-story')
-      const cancelBtn = qs('#cancel-story')
 
       if (!('last' in storyEl.dataset)) storyEl.dataset.last = storyEl.textContent || ''
 
@@ -210,9 +272,8 @@
           storyEl.dataset.last = storyEl.textContent || ''
         }
         storyEl.contentEditable = 'false'
-        if (editBtn) editBtn.hidden = false
-        if (saveBtn) saveBtn.hidden = true
-        if (cancelBtn) cancelBtn.hidden = true
+        if (editBtn) editBtn.style.display = 'block';
+        if (saveBtn) saveBtn.style.display = 'none';
         if (window.__storySaveTimer) { clearTimeout(window.__storySaveTimer); window.__storySaveTimer = null }
       }
 
@@ -227,14 +288,12 @@
 
       if (isFac) {
         if (!window.__storyEditing) {
-          if (editBtn) editBtn.hidden = false
-          if (saveBtn) saveBtn.hidden = true
-          if (cancelBtn) cancelBtn.hidden = true
+          if (editBtn) editBtn.style.display = 'block';
+          if (saveBtn) saveBtn.style.display = 'none';
           storyEl.contentEditable = 'false'
         } else {
-          if (editBtn) editBtn.hidden = true
-          if (saveBtn) saveBtn.hidden = false
-          if (cancelBtn) cancelBtn.hidden = false
+          if (editBtn) editBtn.style.display = 'none';
+          if (saveBtn) saveBtn.style.display = 'block';
           storyEl.contentEditable = 'true'
           storyEl.focus()
         }
@@ -246,7 +305,6 @@
             renderRoom(state)
           })
           if (saveBtn) saveBtn.addEventListener('click', performSave)
-          if (cancelBtn) cancelBtn.addEventListener('click', () => exitEditing(true))
 
           storyEl.addEventListener('keydown', e => {
             if (e.key === 'Enter') { e.preventDefault(); performSave() }
@@ -262,9 +320,8 @@
         }
       } else {
         window.__storyEditing = false
-        if (editBtn) editBtn.hidden = true
-        if (saveBtn) saveBtn.hidden = true
-        if (cancelBtn) cancelBtn.hidden = true
+        if (editBtn) editBtn.style.display = 'none';
+        if (saveBtn) saveBtn.style.display = 'none';
         storyEl.contentEditable = 'false'
       }
     }
@@ -280,10 +337,21 @@
       const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null
       resEl.className = 'avg-value'
       resEl.textContent = avg !== null ? Math.round(avg * 10) / 10 : '—'
+
+      const counts = {}
+      votes.forEach(v => counts[v] = (counts[v] || 0) + 1)
+      const dist = Object.entries(counts).sort((a,b) => Number(a[0])-Number(b[0]))
+        .map(([v,n]) => `<span class="badge">${v} ×${n}</span>`).join(' ')
+      resEl.insertAdjacentHTML('afterend', `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${dist}</div>`)
+
+      const allSame = nums.length > 1 && nums.every(n => n === nums[0])
+      if (allSame) resEl.insertAdjacentHTML('afterend', '<div class="badge" style="margin-top:8px;background:#d1fae5;color:#065f46;border-color:#6ee7b7">✓ Consensus!</div>')
     } else {
       resEl.className = 'avg-value hidden-state'
       resEl.textContent = 'Hidden while voting'
     }
+
+
 
     // ── History ────────────────────────────────────────────────
     const histEl = qs('#history')
