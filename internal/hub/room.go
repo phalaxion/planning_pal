@@ -25,6 +25,8 @@ type Room struct {
 	lastFacilitator    string
 	facilitatorTimer   *time.Timer
 	facilitatorTimerCh chan struct{}
+	cleanupTimer       *time.Timer
+	cleanupTimerCh     chan struct{}
 	history            []models.RoundResult
 
 	register   chan *Client
@@ -39,6 +41,7 @@ func newRoom(id string) *Room {
 		phase:              "voting",
 		story:              "",
 		facilitatorTimerCh: make(chan struct{}, 1),
+		cleanupTimerCh:     make(chan struct{}, 1),
 		register:           make(chan *Client),
 		unregister:         make(chan *Client),
 		inbound:            make(chan inboundMessage, 16),
@@ -94,6 +97,15 @@ func (r *Room) persistHistory() error {
 	return os.WriteFile(path, data, 0644)
 }
 
+func (r *Room) signal(ch chan<- struct{}) bool {
+	select {
+	case ch <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
 func (r *Room) run() {
 	for {
 	roomAction:
@@ -101,10 +113,29 @@ func (r *Room) run() {
 		case <-r.facilitatorTimerCh:
 			r.lastFacilitator = ""
 			r.facilitatorTimer = nil
+
+			log.Printf("room %s: cleared facilitator", r.ID)
+
 			r.broadcastStateToAll()
+
+		case <-r.cleanupTimerCh:
+			if r.facilitatorTimer != nil {
+				r.facilitatorTimer.Stop()
+			}
+
+			GlobalHub.Delete(r.ID)
+
+			log.Printf("room %s: closed room", r.ID)
 
 		case c := <-r.register:
 			log.Printf("room %s: register client=%s name=%s (before) count=%d", r.ID, c.id, c.name, len(r.participants))
+
+			if r.cleanupTimer != nil {
+				log.Printf("room %s: stopped cleanup timer", r.ID)
+
+				r.cleanupTimer.Stop()
+				r.cleanupTimer = nil
+			}
 
 			for _, existing := range r.participants {
 				if existing.id != c.id && existing.name == c.name {
@@ -153,33 +184,36 @@ func (r *Room) run() {
 			delete(r.participants, c.id)
 			close(c.send)
 
+			// If this was the facilitator make a note and start a timer to promote another after a grace period (to allow for quick rejoins without losing facilitator role)
 			if r.facilitatorID == c.id {
-				// mark last facilitator and start a short timer before promoting another
 				r.lastFacilitator = c.id
 				r.facilitatorID = ""
 				if r.facilitatorTimer != nil {
 					r.facilitatorTimer.Stop()
 				}
-				// schedule a promotion after a short grace period
+
+				log.Printf("room %s: facilitator unregistered, starting reassign counter", r.ID)
+
 				r.facilitatorTimer = time.AfterFunc(5*time.Second, func() {
-					// notify room.run via channel to safely mutate room state
-					select {
-					case r.facilitatorTimerCh <- struct{}{}:
-					default:
-					}
+					r.signal(r.facilitatorTimerCh)
 				})
 			}
 
-			// Cleanup the room if there are no participants left
+			// If this was the last participant, schedule a cleanup of the room after a short delay (to allow for quick rejoins without losing state)
 			if len(r.participants) == 0 {
-				if r.facilitatorTimer != nil {
-					r.facilitatorTimer.Stop()
+				if r.cleanupTimer != nil {
+					r.cleanupTimer.Stop()
 				}
-				GlobalHub.Delete(r.ID)
-				return
+
+				log.Printf("room %s: no participants, started cleanup counter", r.ID)
+
+				r.cleanupTimer = time.AfterFunc(5*time.Second, func() {
+					r.signal(r.cleanupTimerCh)
+				})
 			}
 
 			r.broadcastStateToAll()
+
 			log.Printf("room %s: unregistered client=%s name=%s (after) count=%d", r.ID, c.id, c.name, len(r.participants))
 
 		case im := <-r.inbound:
