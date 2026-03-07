@@ -2,10 +2,10 @@ package hub
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/phalaxion/planning_pal/internal/models"
@@ -43,10 +43,12 @@ func newRoom(id string) *Room {
 		unregister:         make(chan *Client),
 		inbound:            make(chan inboundMessage, 16),
 	}
-	// attempt to load persisted history for this room
+
+	// Attempt to load the history for this room
 	if err := r.loadHistory(); err != nil {
 		log.Printf("room %s: loadHistory error: %v", id, err)
 	}
+
 	return r
 }
 
@@ -57,6 +59,7 @@ func (r *Room) historyFilePath() string {
 
 func (r *Room) loadHistory() error {
 	path := r.historyFilePath()
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -64,31 +67,36 @@ func (r *Room) loadHistory() error {
 		}
 		return err
 	}
+
 	var h []models.RoundResult
 	if err := json.Unmarshal(data, &h); err != nil {
 		return err
 	}
+
 	r.history = h
+
 	return nil
 }
 
 func (r *Room) persistHistory() error {
-	// ensure dir exists
 	path := r.historyFilePath()
+
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
 	}
-	// marshal and write
+
 	data, err := json.MarshalIndent(r.history, "", "  ")
 	if err != nil {
 		return err
 	}
+
 	return os.WriteFile(path, data, 0644)
 }
 
 func (r *Room) run() {
 	for {
+	roomAction:
 		select {
 		case <-r.facilitatorTimerCh:
 			r.lastFacilitator = ""
@@ -98,45 +106,33 @@ func (r *Room) run() {
 		case c := <-r.register:
 			log.Printf("room %s: register client=%s name=%s (before) count=%d", r.ID, c.id, c.name, len(r.participants))
 
-			nameTaken := false
 			for _, existing := range r.participants {
 				if existing.id != c.id && existing.name == c.name {
-					nameTaken = true
-					break
+					c.handleError("name_taken", fmt.Sprintf("'%s' is already taken in the room. Please choose a different name.", c.name), true)
+					break roomAction
 				}
-			}
-
-			if nameTaken {
-				errMsg, _ := json.Marshal(models.Message{
-					Type: "error",
-					Payload: mustMarshal(map[string]string{
-						"code":    "name_taken",
-						"message": "That name is already taken in this room",
-					}),
-				})
-				go func(client *Client) {
-					client.send <- errMsg
-				}(c)
-				break
 			}
 
 			// if an existing client with same id exists, close its connection (treat as reconnect)
 			if existing, ok := r.participants[c.id]; ok && existing != c {
 				existing.conn.Close()
 			}
+
 			r.participants[c.id] = c
-			// if this client was the last facilitator and a timer is pending, restore facilitator
+
 			if r.lastFacilitator == c.id && r.facilitatorTimer != nil {
-				if r.facilitatorTimer.Stop() {
-					// stopped before firing
-				}
+				// if this client was the last facilitator and a timer is pending, restore facilitator
+				r.facilitatorTimer.Stop()
 				r.facilitatorTimer = nil
 				r.facilitatorID = c.id
 				r.lastFacilitator = ""
 			} else if r.facilitatorID == "" {
+				// Otherwsie if we do not have a facilitator, assign to the new client (first-come-first-serve)
 				r.facilitatorID = c.id
 			}
+
 			r.broadcastStateToAll()
+
 			log.Printf("room %s: registered client=%s name=%s (after) count=%d", r.ID, c.id, c.name, len(r.participants))
 
 		case c := <-r.unregister:
@@ -153,8 +149,10 @@ func (r *Room) run() {
 			}
 
 			log.Printf("room %s: unregister client=%s name=%s (before) count=%d", r.ID, c.id, c.name, len(r.participants))
+
 			delete(r.participants, c.id)
 			close(c.send)
+
 			if r.facilitatorID == c.id {
 				// mark last facilitator and start a short timer before promoting another
 				r.lastFacilitator = c.id
@@ -171,14 +169,16 @@ func (r *Room) run() {
 					}
 				})
 			}
+
+			// Cleanup the room if there are no participants left
 			if len(r.participants) == 0 {
-				// remove room from hub and exit
 				if r.facilitatorTimer != nil {
 					r.facilitatorTimer.Stop()
 				}
 				GlobalHub.Delete(r.ID)
 				return
 			}
+
 			r.broadcastStateToAll()
 			log.Printf("room %s: unregistered client=%s name=%s (after) count=%d", r.ID, c.id, c.name, len(r.participants))
 
@@ -194,11 +194,13 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 		var payload struct {
 			Card string `json:"card"`
 		}
+
 		if err := json.Unmarshal(m.Payload, &payload); err != nil {
 			log.Printf("invalid vote payload: %v", err)
+			c.handleError("invalid_vote", "Invalid vote payload provided", false)
 			return
 		}
-		// update vote for participant
+
 		if p := r.getParticipantByID(c.id); p != nil {
 			p.Vote = payload.Card
 		}
@@ -210,11 +212,13 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 		var payload struct {
 			Story string `json:"story"`
 		}
+
 		if err := json.Unmarshal(m.Payload, &payload); err != nil {
 			log.Printf("invalid new_round payload: %v", err)
+			c.handleError("invalid_new_round", "Invalid new_round payload provided", false)
 			return
 		}
-		// archive current votes
+
 		votes := make(map[string]string)
 		for _, p := range r.participants {
 			if p.participant != nil {
@@ -222,11 +226,14 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 				p.participant.Vote = ""
 			}
 		}
+
 		r.history = append(r.history, models.RoundResult{Story: r.story, Votes: votes, Timestamp: time.Now().UTC()})
-		// persist history to disk
+
 		if err := r.persistHistory(); err != nil {
 			log.Printf("room %s: persistHistory error: %v", r.ID, err)
+			c.handleError("history_failed", fmt.Sprintf("Failed to save round history: %v", err), false)
 		}
+
 		r.story = payload.Story
 		r.phase = "voting"
 		r.broadcastStateToAll()
@@ -234,9 +241,11 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 		var payload struct {
 			Story string `json:"story"`
 		}
+
 		if err := json.Unmarshal(m.Payload, &payload); err != nil {
 			return
 		}
+
 		r.story = payload.Story
 		r.broadcastStateToAll()
 	}
@@ -252,22 +261,12 @@ func (r *Room) getParticipantByID(id string) *models.Participant {
 // broadcastStateToAll sends a tailored state_update to each connected client,
 // masking other participants' votes during the voting phase.
 func (r *Room) broadcastStateToAll() {
-	// Build a deterministically-ordered slice of clients (by participant name, then ID)
 	clients := make([]*Client, 0, len(r.participants))
 	for _, c := range r.participants {
 		clients = append(clients, c)
 	}
-	sort.Slice(clients, func(i, j int) bool {
-		a := clients[i].participant
-		b := clients[j].participant
-		if a.Name == b.Name {
-			return a.ID < b.ID
-		}
-		return a.Name < b.Name
-	})
 
 	for _, recipient := range r.participants {
-		// build participants slice in deterministic order
 		parts := make([]*models.Participant, 0, len(clients))
 		for _, p := range clients {
 			copyP := *p.participant
@@ -294,6 +293,7 @@ func (r *Room) broadcastStateToAll() {
 			"youId":         recipient.id,
 		}
 		b, _ := json.Marshal(models.Message{Type: "state_update", Payload: mustMarshal(payload)})
+
 		select {
 		case recipient.send <- b:
 		default:

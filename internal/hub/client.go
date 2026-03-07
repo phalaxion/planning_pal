@@ -105,3 +105,23 @@ func (c *Client) Start(r *Room) {
 	go c.writePump()
 	go c.readPump()
 }
+
+func (c *Client) handleError(code string, message string, fatal bool) {
+	fatalStr := "No"
+	if fatal {
+		fatalStr = "Yes"
+	}
+
+	errMsg, _ := json.Marshal(models.Message{
+		Type: "error",
+		Payload: mustMarshal(map[string]string{
+			"code":    code,
+			"message": message,
+			"fatal":   fatalStr,
+		}),
+	})
+
+	go func(client *Client) {
+		client.send <- errMsg
+	}(c)
+}
