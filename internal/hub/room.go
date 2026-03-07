@@ -19,7 +19,6 @@ type inboundMessage struct {
 type Room struct {
 	ID                 string
 	participants       map[string]*Client
-	participantsOrder  []string
 	phase              string
 	story              string
 	facilitatorID      string
@@ -37,7 +36,6 @@ func newRoom(id string) *Room {
 	r := &Room{
 		ID:                 id,
 		participants:       make(map[string]*Client),
-		participantsOrder:  make([]string, 0),
 		phase:              "voting",
 		story:              "",
 		facilitatorTimerCh: make(chan struct{}, 1),
@@ -70,10 +68,6 @@ func (r *Room) loadHistory() error {
 	if err := json.Unmarshal(data, &h); err != nil {
 		return err
 	}
-	// keep only last 25 if file larger
-	if len(h) > 25 {
-		h = h[len(h)-25:]
-	}
 	r.history = h
 	return nil
 }
@@ -97,12 +91,6 @@ func (r *Room) run() {
 	for {
 		select {
 		case <-r.facilitatorTimerCh:
-			// facilitator timeout fired: if still no facilitator, promote first in order
-			if r.facilitatorID == "" {
-				if len(r.participantsOrder) > 0 {
-					r.facilitatorID = r.participantsOrder[0]
-				}
-			}
 			r.lastFacilitator = ""
 			r.facilitatorTimer = nil
 			r.broadcastStateToAll()
@@ -137,17 +125,6 @@ func (r *Room) run() {
 				existing.conn.Close()
 			}
 			r.participants[c.id] = c
-			// maintain join order (avoid duplicates on reconnect)
-			found := false
-			for _, id := range r.participantsOrder {
-				if id == c.id {
-					found = true
-					break
-				}
-			}
-			if !found {
-				r.participantsOrder = append(r.participantsOrder, c.id)
-			}
 			// if this client was the last facilitator and a timer is pending, restore facilitator
 			if r.lastFacilitator == c.id && r.facilitatorTimer != nil {
 				if r.facilitatorTimer.Stop() {
@@ -177,13 +154,6 @@ func (r *Room) run() {
 
 			log.Printf("room %s: unregister client=%s name=%s (before) count=%d", r.ID, c.id, c.name, len(r.participants))
 			delete(r.participants, c.id)
-			// remove from order slice
-			for i, id := range r.participantsOrder {
-				if id == c.id {
-					r.participantsOrder = append(r.participantsOrder[:i], r.participantsOrder[i+1:]...)
-					break
-				}
-			}
 			close(c.send)
 			if r.facilitatorID == c.id {
 				// mark last facilitator and start a short timer before promoting another
@@ -253,10 +223,6 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 			}
 		}
 		r.history = append(r.history, models.RoundResult{Story: r.story, Votes: votes, Timestamp: time.Now().UTC()})
-		if len(r.history) > 25 {
-			start := len(r.history) - 25
-			r.history = append([]models.RoundResult(nil), r.history[start:]...)
-		}
 		// persist history to disk
 		if err := r.persistHistory(); err != nil {
 			log.Printf("room %s: persistHistory error: %v", r.ID, err)
