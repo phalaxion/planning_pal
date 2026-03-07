@@ -1,4 +1,7 @@
 (function () {
+  
+  const deck = ['0', '0.5', '1', '2', '3', '5', '8', '13', '21', '999', '?', '☕']
+
   const path = location.pathname.split('/')
   const roomId = path[2]
   const params = new URLSearchParams(location.search)
@@ -225,7 +228,6 @@
     })
 
     // ── Voting deck ────────────────────────────────────────────
-    const deck = ['0', '0.5', '1', '2', '3', '5', '8', '13', '21', '?', '☕']
     const deckEl = qs('#deck')
     deckEl.innerHTML = ''
 
