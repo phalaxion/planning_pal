@@ -1,4 +1,4 @@
-(function() {
+(function () {
   function qs(selector) { return document.querySelector(selector) }
   const path = location.pathname.split('/')
   const roomId = path[2]
@@ -31,7 +31,7 @@
   function ensureClientId() {
     if (clientId) return clientId
     clientId = window.crypto?.randomUUID?.() || ('id-' + Math.random().toString(36).slice(2, 10))
-    try { sessionStorage.setItem(clientKey, clientId) } catch(e) {}
+    try { sessionStorage.setItem(clientKey, clientId) } catch (e) { }
     return clientId
   }
 
@@ -39,8 +39,8 @@
     const el = qs('#status')
 
     if (el) {
-        el.textContent = text
-        el.style.display = text ? 'inline-block' : 'none'
+      el.textContent = text
+      el.style.display = text ? 'inline-block' : 'none'
     }
   }
 
@@ -52,7 +52,7 @@
       if (idx !== -1) arr.splice(idx, 1)
       arr.unshift(room)
       localStorage.setItem(key, JSON.stringify(arr.slice(0, 3)))
-    } catch(e) {}
+    } catch (e) { }
   }
 
   function showStoryModal(defaultVal = '') {
@@ -97,9 +97,9 @@
     try {
       sessionStorage.setItem(nameKey, name)
       localStorage.setItem(globalNameKey, name)
-    } catch(e) {}
+    } catch (e) { }
 
-    const url = `${location.protocol.replace('http','ws')}//${location.host}/ws?room=${roomId}&name=${encodeURIComponent(name)}&clientId=${encodeURIComponent(id)}`
+    const url = `${location.protocol.replace('http', 'ws')}//${location.host}/ws?room=${roomId}&name=${encodeURIComponent(name)}&clientId=${encodeURIComponent(id)}`
     ws = new WebSocket(url)
 
     ws.onopen = () => {
@@ -129,7 +129,7 @@
     }
 
     ws.onclose = () => attemptReconnect()
-    ws.onerror = () => {} // close will trigger reconnect
+    ws.onerror = () => { } // close will trigger reconnect
   }
 
   function attemptReconnect() {
@@ -166,7 +166,9 @@
 
     // ── Story ──────────────────────────────────────────────────
     const storyEl = qs('#story')
-    if (storyEl) storyEl.textContent = state.story || 'No story set'
+    if (storyEl && storyEl.textContent != state.story) {
+      storyEl.textContent = state.story || 'No story set'
+    }
 
     // ── Participants ───────────────────────────────────────────
     const p = qs('#participants')
@@ -265,10 +267,10 @@
     exportBtn.className = 'btn btn-ghost'
     exportBtn.textContent = '↓ Export CSV'
     exportBtn.onclick = () => {
-      const rows = [['Story','Timestamp',...(state.history[0] ? Object.keys(state.history[0].votes) : [])]]
-      state.history.forEach(h => rows.push([h.story, new Date(h.timestamp).toLocaleString(), ...Object.values(h.votes||{})]))
+      const rows = [['Story', 'Timestamp', ...(state.history[0] ? Object.keys(state.history[0].votes) : [])]]
+      state.history.forEach(h => rows.push([h.story, new Date(h.timestamp).toLocaleString(), ...Object.values(h.votes || {})]))
       const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
-      const a = Object.assign(document.createElement('a'), {href:'data:text/csv;charset=utf-8,'+encodeURIComponent(csv), download:`poker-${roomId}.csv`})
+      const a = Object.assign(document.createElement('a'), { href: 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv), download: `poker-${roomId}.csv` })
       a.click()
     }
     actions.appendChild(exportBtn)
@@ -284,6 +286,7 @@
 
       function exitEditing(cancel) {
         window.__storyEditing = false
+
         if (cancel) {
           storyEl.textContent = storyEl.dataset.last || ''
         } else {
@@ -292,15 +295,17 @@
         storyEl.contentEditable = 'false'
         if (editBtn) editBtn.style.display = 'block';
         if (saveBtn) saveBtn.style.display = 'none';
-        if (window.__storySaveTimer) { clearTimeout(window.__storySaveTimer); window.__storySaveTimer = null }
       }
 
       function performSave() {
         const val = (storyEl.textContent || '').trim()
+
         if (val !== (storyEl.dataset.last || '')) {
           send('set_story', { story: val })
           storyEl.dataset.last = val
+          state.story = val
         }
+
         exitEditing(false)
       }
 
@@ -314,24 +319,29 @@
           if (saveBtn) saveBtn.style.display = 'block';
           storyEl.contentEditable = 'true'
           storyEl.focus()
+
+          const range = document.createRange();
+          range.selectNodeContents(storyEl);
+          range.collapse(false);
+
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(range);
         }
 
         if (!storyEl.dataset._listeners) {
           if (editBtn) editBtn.addEventListener('click', () => {
             window.__storyEditing = true
             storyEl.dataset.last = storyEl.textContent || ''
+
             renderRoom(state)
           })
+
           if (saveBtn) saveBtn.addEventListener('click', performSave)
 
           storyEl.addEventListener('keydown', e => {
             if (e.key === 'Enter') { e.preventDefault(); performSave() }
             if (e.key === 'Escape') { e.preventDefault(); exitEditing(true) }
-          })
-
-          storyEl.addEventListener('input', () => {
-            if (window.__storySaveTimer) clearTimeout(window.__storySaveTimer)
-            window.__storySaveTimer = setTimeout(performSave, 1200)
           })
 
           storyEl.dataset._listeners = '1'
@@ -358,8 +368,8 @@
 
       const counts = {}
       votes.forEach(v => counts[v] = (counts[v] || 0) + 1)
-      const dist = Object.entries(counts).sort((a,b) => Number(a[0])-Number(b[0]))
-        .map(([v,n]) => `<span class="badge">${v} ×${n}</span>`).join(' ')
+      const dist = Object.entries(counts).sort((a, b) => Number(a[0]) - Number(b[0]))
+        .map(([v, n]) => `<span class="badge">${v} ×${n}</span>`).join(' ')
       resEl.insertAdjacentHTML('afterend', `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${dist}</div>`)
 
       const allSame = nums.length > 1 && nums.every(n => n === nums[0])
@@ -368,8 +378,6 @@
       resEl.className = 'avg-value hidden-state'
       resEl.textContent = 'Hidden while voting'
     }
-
-
 
     // ── History ────────────────────────────────────────────────
     const histEl = qs('#history')

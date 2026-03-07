@@ -1,0 +1,10 @@
+body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 15vh;
+}
+
+main { width: 100%; max-width: 440px; }
+
+#recent-list { display: flex; gap: 8px; flex-wrap: wrap; }

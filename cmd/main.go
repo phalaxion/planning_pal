@@ -21,12 +21,16 @@ func main() {
 
 	// Static files
 	fs := http.FileServer(http.Dir("frontend"))
-	mux.Handle("/", fs)
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+
+	// Serve lobby for the root path
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "frontend/lobby/lobby.html")
+	})
 
 	// Serve room page for any /room/{id} path
 	mux.HandleFunc("/room/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "frontend/room.html")
+		http.ServeFile(w, r, "frontend/room/room.html")
 	})
 
 	// WebSocket endpoint
