@@ -183,7 +183,8 @@
 
     const participants = (Array.isArray(state.participants) ? state.participants.slice() : []);
     participants.sort((a, b) => {
-      if (a.id === state.facilitatorId) return -1 // facilitator always first
+      if (b.id == state.youId) return 1 // the user is always first
+      if (a.id == state.youId) return -1 // the user is always first
       return (a.name || '').localeCompare(b.name || '') // otherwise sort by name
     })
 
