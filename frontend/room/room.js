@@ -1,5 +1,4 @@
 (function () {
-  function qs(selector) { return document.querySelector(selector) }
   const path = location.pathname.split('/')
   const roomId = path[2]
   const params = new URLSearchParams(location.search)
@@ -11,8 +10,9 @@
   roomcodeEl.style.cursor = 'pointer'
   roomcodeEl.title = 'Click to copy invite link'
   roomcodeEl.addEventListener('click', () => {
-    navigator.clipboard.writeText(location.href).then(() => {
-      roomcodeEl.textContent = '✓ Copied!'
+    const url = new URL(window.location.href);
+    navigator.clipboard.writeText(url.origin + url.pathname).then(() => {
+      roomcodeEl.textContent = '✓ Copied'
       setTimeout(() => roomcodeEl.textContent = roomId, 1500)
     })
   })
@@ -25,7 +25,14 @@
   const nameKey = `planning_pal.name.${roomId}`
   let clientId = sessionStorage.getItem(clientKey)
   const globalNameKey = 'planning_pal.lastName'
-  let name = nameParam || sessionStorage.getItem(nameKey) || localStorage.getItem(globalNameKey) || 'Player'
+  let name = nameParam || sessionStorage.getItem(nameKey) || localStorage.getItem(globalNameKey)
+
+  if (!name) {
+    const errorMessage = "A name must be provided to join a room"
+    location.href = `/?error=missing_name&message=${encodeURIComponent(errorMessage)}`
+    return;
+  }
+
   let __storyPrompted = false
 
   function ensureClientId() {
@@ -187,6 +194,10 @@
       const card = document.createElement('div')
       card.className = 'p-card' + (isYou ? ' is-you' : '')
 
+      if (pt.id === state.facilitatorId) {
+        card.className += ' p-facilitator';
+      }
+
       // Vote display
       const voteEl = document.createElement('div')
 
@@ -207,13 +218,6 @@
       const nameEl = document.createElement('div')
       nameEl.className = 'p-name' + (isYou ? ' is-you' : '')
       nameEl.textContent = pt.name
-      if (pt.id === state.facilitatorId) {
-        const crown = document.createElement('span')
-        crown.textContent = '♛'
-        crown.title = 'Facilitator'
-        crown.style.cssText = 'position:absolute;top:-12px;left:50%;transform:translateX(-50%);font-size:20px;color:var(--accent);line-height:1'
-        card.appendChild(crown)
-      }
       card.appendChild(nameEl)
 
       p.appendChild(card)
@@ -275,7 +279,7 @@
     }
     actions.appendChild(exportBtn)
 
-    actions.style.display = isFac ? 'block' : 'none';
+    actions.style.display = isFac ? 'flex' : 'none';
 
     // ── Story editing ──────────────────────────────────────────
     if (storyEl) {
@@ -355,28 +359,24 @@
     }
 
     // ── Results summary ────────────────────────────────────────
-    const resEl = qs('#results-summary')
+    const resEl = qs('#results-summary');
+    const consensusBadge = qs('#consensus-badge');
     if (state.phase === 'revealed') {
       const nums = state.participants
         .map(p => p.vote)
-        .filter(v => v && v !== '' && v !== '?' && v !== '☕')
+        .filter(v => v && v !== '' && v !== '-' && v !== '?' && v !== '☕')
         .map(v => Number(v))
         .filter(n => isFinite(n))
       const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null
       resEl.className = 'avg-value'
       resEl.textContent = avg !== null ? Math.round(avg * 10) / 10 : '—'
 
-      const counts = {}
-      votes.forEach(v => counts[v] = (counts[v] || 0) + 1)
-      const dist = Object.entries(counts).sort((a, b) => Number(a[0]) - Number(b[0]))
-        .map(([v, n]) => `<span class="badge">${v} ×${n}</span>`).join(' ')
-      resEl.insertAdjacentHTML('afterend', `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">${dist}</div>`)
-
       const allSame = nums.length > 1 && nums.every(n => n === nums[0])
-      if (allSame) resEl.insertAdjacentHTML('afterend', '<div class="badge" style="margin-top:8px;background:#d1fae5;color:#065f46;border-color:#6ee7b7">✓ Consensus!</div>')
+      consensusBadge.style.visibility = allSame ? 'visible' : 'hidden';
     } else {
       resEl.className = 'avg-value hidden-state'
       resEl.textContent = 'Hidden while voting'
+      consensusBadge.style.visibility = 'hidden';
     }
 
     // ── History ────────────────────────────────────────────────

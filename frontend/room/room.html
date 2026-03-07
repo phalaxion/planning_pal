@@ -1,84 +1,99 @@
 <!doctype html>
 <html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Planning Poker — Room</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/core/style.css">
-    <link rel="stylesheet" href="/static/room/room.css">
-  </head>
-  <body>
-    <!-- Top bar -->
-    <header class="topbar">
-      <div class="topbar-left">
-        <a href="/" class="room-brand">
-          <div class="pip-icon">♠</div>
-        </a>
-        <span id="roomcode">Room</span>
-        <span id="status"></span>
-      </div>
 
-      <!-- Story bar inline in header on wide screens -->
-      <div class="story-bar" style="flex:1;margin-bottom:0">
-        <span class="story-label">Story</span>
-        <span id="story"></span>
-        <span id="story-controls">
-          <button id="edit-story" class="btn btn-ghost" title="Edit story" style="padding:4px 8px;font-size:13px">✎ Edit</button>
-          <button id="save-story" class="btn btn-primary" hidden style="padding:6px 12px;font-size:13px">Save</button>
-        </span>
-      </div>
-    </header>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Planning Poker — Room</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap"
+    rel="stylesheet">
 
-    <!-- Participants -->
-    <div class="section-label" style="position:relative;z-index:1;margin-bottom:10px">Participants</div>
-    <section id="participants"></section>
+  <link rel="stylesheet" href="/static/core/core.css">
+  <link rel="stylesheet" href="/static/room/room.css">
 
-    <!-- Voting deck -->
-    <div class="deck-section">
-      <div class="section-label">Cast your vote</div>
-      <div id="deck"></div>
+  <script src="/static/core/core.js"></script>
+</head>
+
+<body>
+  <span id="status"></span>
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="/" class="room-brand">
+        <div class="pip-icon">♠</div>
+      </a>
+      <span id="roomcode">Room</span>
     </div>
 
-    <!-- Actions -->
-    <div class="action-bar" id="actions"></div>
+    <!-- Story bar inline in header on wide screens -->
+    <div class="story-bar" style="flex:1;margin-bottom:0">
+      <span class="story-label">Story</span>
+      <span id="story"></span>
+      <span id="story-controls">
+        <button id="edit-story" class="btn btn-ghost" title="Edit story" style="padding:4px 8px;font-size:13px">✎
+          Edit</button>
+        <button id="save-story" class="btn btn-primary" hidden style="padding:6px 12px;font-size:13px;display:none;">Save</button>
+      </span>
+    </div>
+  </header>
 
-    <!-- Results -->
-    <div class="results-section">
-      <div class="section-label">Results</div>
-      <div class="results-summary">
-        <div>
-          <div class="avg-label">Average</div>
-          <div class="avg-value" id="results-summary">—</div>
-        </div>
+  <!-- Participants -->
+  <div class="section-label" style="position:relative;z-index:1;margin-bottom:10px">Participants</div>
+  <section id="participants"></section>
+
+  <!-- Voting deck -->
+  <div class="deck-section">
+    <div class="section-label">Cast your vote</div>
+    <div id="deck"></div>
+  </div>
+
+  <!-- Actions -->
+  <div class="action-bar" id="actions"></div>
+
+  <!-- Results -->
+  <div class="results-section">
+    <div class="section-label">
+      Results
+
+      <div id="consensus-badge" class="badge" style="margin-left:8px;visibility:hidden;">✓ Consensus!</div>
+    </div>
+    <div class="results-summary">
+      <div>
+        <div class="avg-label">Average</div>
+        <div class="avg-value" id="results-summary">—</div>
       </div>
     </div>
+  </div>
 
-    <!-- History -->
-    <div class="history-section">
-      <div class="section-label">Round history</div>
-      <div class="history-list" id="history"></div>
-    </div>
+  <!-- History -->
+  <div class="history-section">
+    <div class="section-label">Round history</div>
+    <div class="history-list" id="history"></div>
+  </div>
 
-    <!-- Debug (hidden by default, shown with ?debug=1) -->
-    <pre id="debug">debug</pre>
+  <!-- Debug (hidden by default, shown with ?debug=1) -->
+  <pre id="debug">debug</pre>
 
-    <div id="story-modal" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(26,23,20,0.4);backdrop-filter:blur(4px);align-items:center;justify-content:center">
-      <div class="card" style="width:100%;max-width:420px;margin:24px">
-        <div style="font-family:var(--serif);font-size:22px;margin-bottom:16px">New round</div>
-        <label class="field-label" for="modal-story-input">Story label</label>
-        <div class="input-wrap">
-          <span class="input-icon">✦</span>
-          <input type="text" id="modal-story-input" placeholder="e.g. USER-342 — Add dark mode" autocomplete="off" />
-        </div>
-        <div style="display:flex;gap:8px;margin-top:20px">
-          <button id="modal-confirm" class="btn btn-primary btn-full">Start round →</button>
-          <button id="modal-cancel" class="btn btn-secondary">Cancel</button>
-        </div>
+  <div id="story-modal"
+    style="display:none;position:fixed;inset:0;z-index:100;background:rgba(26,23,20,0.4);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+    <div class="card" style="width:100%;max-width:420px;margin:24px">
+      <div style="font-family:var(--serif);font-size:22px;margin-bottom:16px">New round</div>
+      <label class="field-label" for="modal-story-input">Story label</label>
+      <div class="input-wrap">
+        <span class="input-icon">✦</span>
+        <input type="text" id="modal-story-input" placeholder="e.g. USER-342 — Add dark mode" autocomplete="off" />
+      </div>
+      <div style="display:flex;gap:8px;margin-top:20px">
+        <button id="modal-confirm" class="btn btn-primary btn-full">Start round →</button>
+        <button id="modal-cancel" class="btn btn-secondary">Cancel</button>
       </div>
     </div>
+  </div>
 
-    <script src="/static/room/room.js"></script>
-  </body>
+  <script src="/static/room/room.js"></script>
+</body>
+
 </html>

@@ -1,56 +1,64 @@
 <!doctype html>
 <html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Planning Poker — Lobby</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/core/style.css">
-    <link rel="stylesheet" href="/static/lobby/index.css">
-  </head>
-  <body>
-    <main>
-      <div class="logo-area">
-        <div class="logo-pip">
-          <div class="pip-icon">♠</div>
-        </div>
-        <h1>Planning <em>Poker</em></h1>
-        <p class="tagline">Estimate stories together, in real time</p>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Planning Poker — Lobby</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap"
+    rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/core/core.css">
+  <link rel="stylesheet" href="/static/lobby/lobby.css">
+
+  <script src="/static/core/core.js"></script>
+</head>
+
+<body>
+  <main>
+    <div class="logo-area">
+      <div class="logo-pip">
+        <div class="pip-icon">♠</div>
+      </div>
+      <h1>Planning <em>Poker</em></h1>
+      <p class="tagline">Estimate stories together, in real time</p>
+    </div>
+
+    <div class="card">
+      <label class="field-label" for="name">Your name</label>
+      <div class="input-wrap">
+        <span class="input-icon">👤</span>
+        <input type="text" id="name" placeholder="e.g. Alex" autocomplete="off" />
       </div>
 
-      <div class="card">
-        <label class="field-label" for="name">Your name</label>
-        <div class="input-wrap">
-          <span class="input-icon">👤</span>
-          <input type="text" id="name" placeholder="e.g. Alex" autocomplete="off" />
+      <div class="divider">then</div>
+
+      <button class="btn btn-primary btn-full" id="create">
+        <span>♠</span> Create a room
+      </button>
+
+      <div class="divider">or join existing</div>
+
+      <div class="join-row">
+        <div class="input-wrap" style="flex:1">
+          <span class="input-icon text-mono" style="font-size:13px">#</span>
+          <input type="text" id="room" placeholder="ROOM CODE" maxlength="8" autocomplete="off" />
         </div>
-
-        <div class="divider">then</div>
-
-        <button class="btn btn-primary btn-full" id="create">
-          <span>♠</span> Create a room
-        </button>
-
-        <div class="divider">or join existing</div>
-
-        <div class="join-row">
-          <div class="input-wrap" style="flex:1">
-            <span class="input-icon text-mono" style="font-size:13px">#</span>
-            <input type="text" id="room" placeholder="ROOM CODE" maxlength="8" autocomplete="off" />
-          </div>
-          <button class="btn btn-secondary" id="join">Join →</button>
-        </div>
-
-        <div class="recent-section" id="recent-rooms">
-          <div class="recent-label">Recent rooms</div>
-          <div id="recent-list"></div>
-        </div>
+        <button class="btn btn-secondary" id="join">Join →</button>
       </div>
-    </main>
 
-    <footer>No account needed &middot; Rooms expire when empty</footer>
+      <div class="recent-section" id="recent-rooms">
+        <div class="recent-label">Recent rooms</div>
+        <div id="recent-list"></div>
+      </div>
+    </div>
+  </main>
 
-    <script src="/static/lobby/lobby.js"></script>
-  </body>
+  <footer>No account needed &middot; Rooms expire when empty</footer>
+
+  <script src="/static/lobby/lobby.js"></script>
+</body>
+
 </html>

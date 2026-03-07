@@ -1,8 +1,14 @@
 try {
     document.addEventListener('DOMContentLoaded', () => {
         const last = localStorage.getItem('planning_pal.lastName') || ''
-        const el = document.getElementById('name')
+        const el = qs('#name')
         if (el && last) el.value = last
+
+        const error = new URLSearchParams(location.search).get('error')
+        if (error) {
+            const message = new URLSearchParams(location.search).get('message')
+            showError(error, message)
+        }
     })
 } catch (e) { }
 
@@ -25,15 +31,15 @@ function saveRecent(room) {
 }
 
 function getName() {
-    const v = document.getElementById('name').value.trim()
+    const v = qs('#name').value.trim()
     try { localStorage.setItem('planning_pal.lastName', v) } catch (e) { }
-    return encodeURIComponent(v || 'Player')
+    return encodeURIComponent(v || '')
 }
 
 function renderRecent() {
     try {
         const arr = JSON.parse(localStorage.getItem('planning_pal.recent') || '[]')
-        const el = document.getElementById('recent-list')
+        const el = qs('#recent-list')
         el.innerHTML = ''
         if (!arr.length) {
             el.innerHTML = '<span class="no-content">No recent rooms yet</span>'
@@ -55,16 +61,31 @@ document.addEventListener('DOMContentLoaded', renderRecent)
 
 document.getElementById('create').addEventListener('click', async () => {
     const name = getName()
+
+    if (!name) {
+        const errorMessage = "A name must be provided to create a room"
+        showError('missing_name', errorMessage)
+        return;
+    }
+
     const room = randRoom()
     saveRecent(room)
     location.href = `/room/${room}?name=${name}`
 })
 
 document.getElementById('join').addEventListener('click', () => {
-    const room = document.getElementById('room').value.trim().toUpperCase()
-    if (!room) { document.getElementById('room').focus(); return }
+    const name = getName()
+
+    if (!name) {
+        const errorMessage = "A name must be provided to join a room"
+        showError('missing_name', errorMessage)
+        return;
+    }
+
+    const room = qs('#room').value.trim().toUpperCase()
+    if (!room) { qs('#room').focus(); return }
     saveRecent(room)
-    location.href = `/room/${encodeURIComponent(room)}?name=${getName()}`
+    location.href = `/room/${encodeURIComponent(room)}?name=${name}`
 })
 
 document.getElementById('room').addEventListener('input', function () {
@@ -74,17 +95,17 @@ document.getElementById('room').addEventListener('input', function () {
 })
 
 document.getElementById('room').addEventListener('keydown', e => {
-    if (e.key === 'Enter') document.getElementById('join').click()
+    if (e.key === 'Enter') qs('#join').click()
 })
 
 renderRecent()
 
-const error = new URLSearchParams(location.search).get('error')
-if (error) {
-    const message = new URLSearchParams(location.search).get('message')
+function showError(error, message) {
+    qs('#error-msg')?.remove()
 
     const msg = document.createElement('div')
+    msg.id = 'error-msg'
     msg.style.cssText = 'margin-bottom:16px;padding:10px 14px;border-radius:8px;background:#fef2f2;border:1px solid rgba(185,28,28,0.15);color:#b91c1c;font-size:13px;font-weight:500'
     msg.textContent = message
-    document.querySelector('.card').prepend(msg)
+    qs('.card').prepend(msg)
 }
