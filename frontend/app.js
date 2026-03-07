@@ -172,8 +172,11 @@
     const p = qs('#participants')
     p.innerHTML = ''
 
-    const participants = (Array.isArray(state.participants) ? state.participants.slice() : [])
-      .sort((a, b) => (a.name || '').localeCompare(b.name || '') || (a.id || '').localeCompare(b.id || ''))
+    const participants = (Array.isArray(state.participants) ? state.participants.slice() : []);
+    participants.sort((a, b) => {
+      if (a.id === state.facilitatorId) return -1 // facilitator always first
+      return (a.name || '').localeCompare(b.name || '') // otherwise sort by name
+    })
 
     participants.forEach(pt => {
       const isYou = pt.id === youId
@@ -187,10 +190,10 @@
 
       if (state.phase === 'revealed') {
         voteEl.className = 'p-vote'
-        voteEl.textContent = pt.vote || '—'
+        voteEl.textContent = pt.vote || '?'
       } else if (isYou) {
         voteEl.className = 'p-vote'
-        voteEl.textContent = pt.vote || ''
+        voteEl.textContent = pt.vote || '-'
       } else if (voted) {
         voteEl.className = 'p-vote voted-hidden'
       } else {
