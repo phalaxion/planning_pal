@@ -116,6 +116,13 @@ func (r *Room) run() {
 
 			log.Printf("room %s: cleared facilitator", r.ID)
 
+			if len(r.participants) > 0 {
+				for _, c := range r.participants {
+					r.facilitatorID = c.id
+					break
+				}
+			}
+
 			r.broadcastStateToAll()
 
 		case <-r.cleanupTimerCh:
