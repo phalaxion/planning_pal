@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/websocket"
 	"github.com/phalaxion/planning_pal/internal/hub"
@@ -19,18 +20,23 @@ func main() {
 	flag.Parse()
 	mux := http.NewServeMux()
 
+	staticPath := os.Getenv("STATIC_PATH")
+	if staticPath == "" {
+		staticPath = "frontend" // fallback for local dev
+	}
+
 	// Static files
-	fs := http.FileServer(http.Dir("frontend"))
+	fs := http.FileServer(http.Dir(staticPath))
 	mux.Handle("/static/", http.StripPrefix("/static/", fs))
 
 	// Serve lobby for the root path
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "frontend/lobby/lobby.html")
+		http.ServeFile(w, r, staticPath+"/lobby/lobby.html")
 	})
 
 	// Serve room page for any /room/{id} path
 	mux.HandleFunc("/room/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "frontend/room/room.html")
+		http.ServeFile(w, r, staticPath+"/room/room.html")
 	})
 
 	// WebSocket endpoint
