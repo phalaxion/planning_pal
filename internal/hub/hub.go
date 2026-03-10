@@ -5,6 +5,7 @@ import (
 	"os"
 	"sync"
 
+	store_type "github.com/phalaxion/planning_pal/internal/enum"
 	"github.com/phalaxion/planning_pal/internal/models"
 	"github.com/phalaxion/planning_pal/internal/store"
 )
@@ -35,18 +36,29 @@ func NewHub() *Hub {
 		storeType = "json"
 	}
 
-	var hubResultStore Store
-
-	if storeType == "json" {
-		hubResultStore = store.NewJSONStore(storePath)
-	} else {
+	storeTypeEnum, err := store_type.ValueOf(storeType)
+	if err != nil {
 		log.Fatalf("Invalid store type %q", storeType)
 	}
 
-	return &Hub{
+	hub := Hub{
 		rooms: make(map[string]*Room),
-		store: hubResultStore, // can be set to a real implementation later
 	}
+
+	switch storeTypeEnum {
+	case store_type.JSON:
+		hub.store = store.NewJSONStore(storePath)
+	case store_type.SQLITE:
+		sqliteStore, err := store.NewSQLiteStore(storePath)
+
+		if err != nil {
+			log.Fatalf("Failed to initialize SQLite store: %v", err)
+		}
+
+		hub.store = sqliteStore
+	}
+
+	return &hub
 }
 
 func (h *Hub) Get(roomID string) (*Room, bool) {
