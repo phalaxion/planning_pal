@@ -1,3 +1,6 @@
+PPAL_STORE_PATH ?= ./data
+PPAL_STORE_TYPE ?= json
+
 GOOS ?= darwin
 GOARCH ?= amd64
 
@@ -5,7 +8,7 @@ build:
 	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -o bin/server-$(GOOS)-$(GOARCH) ./cmd
 
 run:
-	go run ./cmd
+	PPAL_STORE_PATH=$(PPAL_STORE_PATH) PPAL_STORE_TYPE=$(PPAL_STORE_TYPE) go run ./cmd
 
 fmt:
 	gofmt -w .
