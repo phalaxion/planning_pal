@@ -13,6 +13,7 @@ type Participant struct {
 }
 
 type RoundResult struct {
+	ID        string            `json:"id"`
 	Story     string            `json:"story"`
 	Votes     map[string]string `json:"votes"`
 	Timestamp time.Time         `json:"timestamp"`

@@ -4,10 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"time"
 
+	"github.com/beevik/guid"
 	"github.com/phalaxion/planning_pal/internal/models"
 )
 
@@ -32,9 +31,11 @@ type Room struct {
 	register   chan *Client
 	unregister chan *Client
 	inbound    chan inboundMessage
+
+	store Store
 }
 
-func newRoom(id string) *Room {
+func newRoom(store *Store, id string) *Room {
 	r := &Room{
 		ID:                 id,
 		participants:       make(map[string]*Client),
@@ -45,56 +46,19 @@ func newRoom(id string) *Room {
 		register:           make(chan *Client),
 		unregister:         make(chan *Client),
 		inbound:            make(chan inboundMessage, 16),
+
+		store: *store,
 	}
 
-	// Attempt to load the history for this room
-	if err := r.loadHistory(); err != nil {
-		log.Printf("room %s: loadHistory error: %v", id, err)
+	history, err := r.store.List(r.ID)
+
+	if err != nil {
+		log.Printf("room %s: failed to load history error: %v", id, err)
+	} else {
+		r.history = history
 	}
 
 	return r
-}
-
-func (r *Room) historyFilePath() string {
-	base := "data/rooms"
-	return filepath.Join(base, r.ID+".json")
-}
-
-func (r *Room) loadHistory() error {
-	path := r.historyFilePath()
-
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-
-	var h []models.RoundResult
-	if err := json.Unmarshal(data, &h); err != nil {
-		return err
-	}
-
-	r.history = h
-
-	return nil
-}
-
-func (r *Room) persistHistory() error {
-	path := r.historyFilePath()
-
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(r.history, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(path, data, 0644)
 }
 
 func (r *Room) signal(ch chan<- struct{}) bool {
@@ -268,12 +232,14 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 			}
 		}
 
-		r.history = append(r.history, models.RoundResult{Story: r.story, Votes: votes, Timestamp: time.Now().UTC()})
+		result := models.RoundResult{ID: guid.New().String(), Story: r.story, Votes: votes, Timestamp: time.Now().UTC()}
 
-		if err := r.persistHistory(); err != nil {
-			log.Printf("room %s: persistHistory error: %v", r.ID, err)
-			c.handleError("history_failed", fmt.Sprintf("Failed to save round history: %v", err), false)
+		if err := r.store.Save(r.ID, result); err != nil {
+			log.Printf("room %s - failed to save round result: %v", r.ID, err)
+			c.handleError("history_failed", fmt.Sprintf("Failed to save round result: %v", err), false)
 		}
+
+		r.history = append(r.history, result)
 
 		r.story = payload.Story
 		r.phase = "voting"
