@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 
 	"github.com/phalaxion/planning_pal/internal/models"
 )
@@ -22,7 +22,7 @@ type Migration struct {
 
 func NewSQLiteStore(filePath string) (*SQLiteStore, error) {
 	filePath = filePath + "/sqlite.db"
-	db, err := sql.Open("sqlite3", filePath)
+	db, err := sql.Open("sqlite", filePath)
 	if err != nil {
 		return nil, err
 	}
