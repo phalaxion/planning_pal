@@ -266,7 +266,16 @@
     if (!isFac) newRoundBtn.style.opacity = '0.4'
     newRoundBtn.onclick = async () => {
       const story = await showStoryModal()
-      if (story !== null) send('new_round', { story })
+      if (story !== null) {
+        const nums = state.participants
+          .map(p => p.vote)
+          .filter(v => v && v !== '' && v !== '-' && v !== '?' && v !== '☕')
+          .map(v => Number(v))
+          .filter(n => isFinite(n))
+        const lastRoundAverage = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0
+
+        send('new_round', { story, lastRoundAverage })
+      }
     }
     actions.appendChild(newRoundBtn)
 

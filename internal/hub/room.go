@@ -215,7 +215,8 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 		r.broadcastStateToAll()
 	case "new_round":
 		var payload struct {
-			Story string `json:"story"`
+			LastRoundAverage float64 `json:"lastRoundAverage"`
+			Story            string  `json:"story"`
 		}
 
 		if err := json.Unmarshal(m.Payload, &payload); err != nil {
@@ -232,7 +233,7 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 			}
 		}
 
-		result := models.RoundResult{ID: guid.New().String(), Story: r.story, Votes: votes, Timestamp: time.Now().UTC()}
+		result := models.RoundResult{ID: guid.New().String(), Story: r.story, AverageVote: payload.LastRoundAverage, Votes: votes, Timestamp: time.Now().UTC()}
 
 		if err := r.store.Save(r.ID, result); err != nil {
 			log.Printf("room %s - failed to save round result: %v", r.ID, err)
