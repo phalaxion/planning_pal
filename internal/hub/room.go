@@ -227,7 +227,7 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 
 		votes := make(map[string]string)
 		for _, p := range r.participants {
-			if p.participant != nil {
+			if p.participant != nil && p.participant.Vote != "" {
 				votes[p.participant.Name] = p.participant.Vote
 				p.participant.Vote = ""
 			}
