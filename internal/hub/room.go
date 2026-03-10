@@ -300,6 +300,7 @@ func (r *Room) broadcastStateToAll() {
 			"history":       r.history,
 			"youId":         recipient.id,
 		}
+
 		b, _ := json.Marshal(models.Message{Type: "state_update", Payload: mustMarshal(payload)})
 
 		select {

@@ -1,5 +1,5 @@
 PPAL_STORE_PATH ?= ./data
-PPAL_STORE_TYPE ?= json
+PPAL_STORE_TYPE ?= sqlite
 
 GOOS ?= darwin
 GOARCH ?= amd64

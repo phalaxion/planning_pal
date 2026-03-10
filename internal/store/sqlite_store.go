@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
+
 	"github.com/phalaxion/planning_pal/internal/models"
 )
 
@@ -19,6 +21,7 @@ type Migration struct {
 }
 
 func NewSQLiteStore(filePath string) (*SQLiteStore, error) {
+	filePath = filePath + "/sqlite.db"
 	db, err := sql.Open("sqlite3", filePath)
 	if err != nil {
 		return nil, err
@@ -49,7 +52,7 @@ func (s *SQLiteStore) applyMigrations() error {
 			ID:      "0001_create_rooms_table",
 			Version: 1,
 			Up: `CREATE TABLE IF NOT EXISTS rooms (
-				id TEXT PRIMARY KEY,
+				id TEXT NOT NULL PRIMARY KEY,
 				lastupdate INTEGER NOT NULL
 			);`,
 		})
@@ -58,7 +61,7 @@ func (s *SQLiteStore) applyMigrations() error {
 			ID:      "0001_create_rounds_table",
 			Version: 1,
 			Up: `CREATE TABLE IF NOT EXISTS rounds (
-				id TEXT PRIMARY KEY,
+				id TEXT NOT NULL PRIMARY KEY,
 				roomid TEXT NOT NULL,
 				story TEXT NOT NULL,
 				averagevote REAL NOT NULL,
@@ -70,7 +73,7 @@ func (s *SQLiteStore) applyMigrations() error {
 			ID:      "0001_create_votes_table",
 			Version: 1,
 			Up: `CREATE TABLE IF NOT EXISTS votes (
-				id INTEGER PRIMARY KEY,
+				id INTEGER NOT NULL PRIMARY KEY,
 				roundid TEXT NOT NULL,
 				name TEXT NOT NULL,
 				vote REAL NOT NULL
@@ -128,9 +131,10 @@ func (s *SQLiteStore) Get(room string, roundId string) (*models.RoundResult, err
 	}
 
 	round := &models.RoundResult{
+		ID:          roundID,
 		Story:       story,
 		AverageVote: averageVote,
-		Timestamp:   time.Unix(timestamp, 0),
+		Timestamp:   time.Unix(timestamp, 0).UTC(),
 	}
 
 	votes, err := s.getVotes(roundId)
@@ -163,9 +167,10 @@ func (s *SQLiteStore) List(room string) ([]models.RoundResult, error) {
 		}
 
 		round := models.RoundResult{
+			ID:          roundId,
 			Story:       story,
 			AverageVote: averageVote,
-			Timestamp:   time.Unix(timestamp, 0),
+			Timestamp:   time.Unix(timestamp, 0).UTC(),
 		}
 
 		votes, err := s.getVotes(roundId)
@@ -186,7 +191,7 @@ func (s *SQLiteStore) List(room string) ([]models.RoundResult, error) {
 }
 
 func (s *SQLiteStore) Save(room string, result models.RoundResult) error {
-	timestamp := time.Now().UnixNano()
+	timestamp := time.Now().Unix()
 
 	roomStatement := `INSERT INTO rooms(id, lastupdate) VALUES(?, ?) ON CONFLICT(id) DO UPDATE SET lastupdate = ?`
 	_, err := s.DB.Exec(roomStatement, room, timestamp, timestamp)
@@ -194,20 +199,15 @@ func (s *SQLiteStore) Save(room string, result models.RoundResult) error {
 		return err
 	}
 
-	roundStatement := `INSERT INTO rounds(roomid, story, averagevote, timestamp) VALUES(?, ?, ?, ?)`
-	res, err := s.DB.Exec(roundStatement, room, result.Story, result.AverageVote, result.Timestamp.UnixNano())
-	if err != nil {
-		return err
-	}
-
-	roundid, err := res.LastInsertId()
+	roundStatement := `INSERT INTO rounds(id, roomid, story, averagevote, timestamp) VALUES(?, ?, ?, ?, ?)`
+	_, err = s.DB.Exec(roundStatement, result.ID, room, result.Story, result.AverageVote, result.Timestamp.Unix())
 	if err != nil {
 		return err
 	}
 
 	voteStatement := `INSERT INTO votes(roundid, name, vote) VALUES(?, ?, ?)`
 	for name, vote := range result.Votes {
-		_, err = s.DB.Exec(voteStatement, roundid, name, vote)
+		_, err = s.DB.Exec(voteStatement, result.ID, name, vote)
 		if err != nil {
 			return err
 		}
@@ -242,12 +242,12 @@ func (s *SQLiteStore) getVotes(roundId string) (map[string]string, error) {
 
 	for rows.Next() {
 		var name string
-		var vote float64
+		var vote string
 		if err := rows.Scan(&name, &vote); err != nil {
 			return nil, err
 		}
 
-		votes[name] = fmt.Sprintf("%.2f", vote)
+		votes[name] = vote
 	}
 
 	if err := rows.Err(); err != nil {

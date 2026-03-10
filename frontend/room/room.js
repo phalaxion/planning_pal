@@ -24,11 +24,9 @@
   let attempts = 0
   const maxAttempts = 5
   let sendQueue = []
-  const clientKey = `planning_pal.clientId.${roomId}`
-  const nameKey = `planning_pal.name.${roomId}`
-  let clientId = sessionStorage.getItem(clientKey)
-  const globalNameKey = 'planning_pal.lastName'
-  let name = nameParam || sessionStorage.getItem(nameKey) || localStorage.getItem(globalNameKey)
+  const nameKey = `planning_pal.name`
+  let clientId = sessionStorage.getItem('planning_pal.clientId')
+  let name = nameParam || sessionStorage.getItem('planning_pal.name') || localStorage.getItem('planning_pal.lastName')
 
   if (!name) {
     const errorMessage = "A name must be provided to join a room"
