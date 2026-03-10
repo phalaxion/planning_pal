@@ -24,6 +24,20 @@ go run ./tools/wsmon -room=TEST -name=Alice
 
 ## Deployment
 
+### Data Store Setup
+
+Create a user to manage the service and own the store data
+```bash
+sudo adduser --system --no-create-home planning-pal
+```
+
+Create and set permissions on the store folder
+```bash
+sudo mkdir -p /var/lib/planning-pal
+sudo chmod -R +x /opt/planning-pal/
+sudo chown -R planning-pal /var/lib/planning-pal
+```
+
 ### Apache Setup
 
 Enable required modules:
@@ -75,12 +89,14 @@ Description=Planning Pal Server
 After=network.target
 
 [Service]
+User=planning-pal
 ExecStart=/opt/planning-pal/server
 WorkingDirectory=/opt/planning-pal
-Environment=STATIC_PATH=/var/www/planning-pal
 Restart=always
 RestartSec=3
-User=www-data
+Environment=STATIC_PATH=/var/www/planning-pal
+Environment=PPAL_STORE_PATH=/var/lib/planning-pal
+Environment=PPAL_STORE_TYPE=sqlite
 
 [Install]
 WantedBy=multi-user.target
