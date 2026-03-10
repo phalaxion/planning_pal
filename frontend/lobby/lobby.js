@@ -59,6 +59,16 @@ function renderRecent() {
 
 document.addEventListener('DOMContentLoaded', renderRecent)
 
+document.getElementById('name').addEventListener('keydown', e => {
+    if (e.key === 'Tab') {
+        qs('#room').focus()
+        e.preventDefault();
+    }
+    if (e.key === 'Enter') {
+        qs('#create').click()
+    }
+})
+
 document.getElementById('create').addEventListener('click', async () => {
     const name = getName()
 
