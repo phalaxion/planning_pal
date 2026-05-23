@@ -256,6 +256,17 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 
 		r.story = payload.Story
 		r.broadcastStateToAll()
+	case "promote":
+		var payload struct {
+			ID string `json:"id"`
+		}
+
+		if err := json.Unmarshal(m.Payload, &payload); err != nil {
+			return
+		}
+
+		r.facilitatorID = payload.ID
+		r.broadcastStateToAll()
 	}
 }
 

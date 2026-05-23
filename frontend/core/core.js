@@ -1,4 +1,5 @@
 function qs(selector) { return document.querySelector(selector) }
+function qsa(selector) { return document.querySelectorAll(selector) }
 
 function getClientId() {
 	let clientId = sessionStorage.getItem('planning_pal.clientId');

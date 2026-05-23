@@ -67,18 +67,44 @@ import Connection from "../core/Connection.js";
 
 			const card = document.createElement('div')
 			card.className = 'p-card' + (isYou ? ' is-you' : '')
+			card.style.cursor = 'pointer';
+			card.dataset.id = pt.id;
+			card.onclick = () => {
+				qsa('#participants .p-card').forEach(el => el.classList.remove('selected'));
+				card.classList.add("selected");
+			}
 
 			if (pt.id === state.facilitatorId) {
 				card.className += ' p-facilitator';
 			}
 
 			const nameEl = document.createElement('div')
-			nameEl.className = 'p-name' + (isYou ? ' is-you' : '')
+			nameEl.className = 'p-name'
 			nameEl.textContent = pt.name
+
+			if (isYou) {
+				card.className += ' selected';
+				nameEl.className += ' is-you';
+			}
+
 			card.appendChild(nameEl)
 
 			p.appendChild(card)
 		})
+
+		// ── Actions ────────────────────────────────────────────────
+		const actions = qs('#actions')
+		actions.innerHTML = ''
+
+		const makeAdminBtn = document.createElement('button')
+		makeAdminBtn.className = 'btn btn-primary'
+		makeAdminBtn.innerHTML = '&uarr; Promote'
+		makeAdminBtn.onclick = () => {
+			const toPromote = qs('#participants .selected')
+			const id = toPromote.dataset.id;
+			ws.send('promote', { id });
+		}
+		actions.appendChild(makeAdminBtn)
 
 		// ── Debug ──────────────────────────────────────────────────
 		const dbg = qs('#debug')
