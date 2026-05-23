@@ -11,6 +11,20 @@ import Connection from "../core/Connection.js";
 		return;
 	}
 
+	const roomcodeEl = qs('#roomcode')
+	roomcodeEl.textContent = roomId
+	roomcodeEl.title = 'Click to copy invite link'
+	roomcodeEl.addEventListener('click', () => {
+		const url = new URL(window.location.href);
+		navigator.clipboard.writeText(`${url.origin}/room/${roomId}?name=${encodeURIComponent(name)}`).then(() => {
+		roomcodeEl.textContent = '✓ Copied'
+			setTimeout(() => roomcodeEl.textContent = roomId, 1500)
+		})
+	});
+
+	const backArrowEl = qs('#back-arrow')
+	backArrowEl.href = `/room/${roomId}?name=${encodeURIComponent(name)}`;
+
 	const ws = new Connection(clientId, name, roomId);
 	ws.connect(
 		(ev) => {

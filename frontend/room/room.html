@@ -15,7 +15,7 @@
 	<script src="/static/core/core.js"></script>
 
 	<link rel="stylesheet" href="/static/room/room.css">
-	<script type="module" src="/static/room/room.js"></script>
+	<script type="module" src="/static/room/room.js" defer></script>
 </head>
 
 <body>
@@ -86,8 +86,7 @@
 			<label class="field-label" for="modal-story-input">Story label</label>
 			<div class="input-wrap">
 				<span class="input-icon">✦</span>
-				<input type="text" id="modal-story-input" placeholder="e.g. USER-342 — Add dark mode"
-					autocomplete="off" />
+				<input type="text" id="modal-story-input" placeholder="e.g. ENG-1234 — Add dark mode" autocomplete="off" />
 			</div>
 			<div style="display:flex;gap:8px;margin-top:20px">
 				<button id="modal-confirm" class="btn btn-primary btn-full">Start round →</button>

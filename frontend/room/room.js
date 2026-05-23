@@ -1,8 +1,8 @@
 import Connection from "../core/Connection.js";
 
-const deck = ['1', '2', '3', '4', '5', '6', '8', '10', '12', '16', '20', '999', '?', '☕'];
-
 (function () {
+	const deck = ['1', '2', '3', '4', '5', '6', '8', '10', '12', '16', '20', '999', '?', '☕'];
+
 	const clientId = getClientId();
 	const name = getName();
 	const roomId = getRoom();
@@ -18,7 +18,7 @@ const deck = ['1', '2', '3', '4', '5', '6', '8', '10', '12', '16', '20', '999', 
 	roomcodeEl.title = 'Click to copy invite link'
 	roomcodeEl.addEventListener('click', () => {
 		const url = new URL(window.location.href);
-		navigator.clipboard.writeText(url.origin + url.pathname).then(() => {
+		navigator.clipboard.writeText(`${url.origin}/room/${roomId}?name=${encodeURIComponent(name)}`).then(() => {
 		roomcodeEl.textContent = '✓ Copied'
 			setTimeout(() => roomcodeEl.textContent = roomId, 1500)
 		})
