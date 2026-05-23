@@ -107,8 +107,8 @@ import Connection from "../core/Connection.js";
 
 		// ── Story ──────────────────────────────────────────────────
 		const storyEl = qs('#story')
-		if (storyEl && storyEl.textContent != state.story) {
-		storyEl.textContent = state.story || 'No story set'
+		if (storyEl && !window.__storyEditing && storyEl.textContent != state.story) {
+			storyEl.textContent = state.story || 'No story set'
 		}
 
 		// ── Participants ───────────────────────────────────────────
@@ -226,79 +226,79 @@ import Connection from "../core/Connection.js";
 
 		// ── Story editing ──────────────────────────────────────────
 		if (storyEl) {
-		const editBtn = qs('#edit-story')
-		const saveBtn = qs('#save-story')
+			const editBtn = qs('#edit-story')
+			const saveBtn = qs('#save-story')
 
-		if (!('last' in storyEl.dataset)) storyEl.dataset.last = storyEl.textContent || ''
+			if (!('last' in storyEl.dataset)) storyEl.dataset.last = storyEl.textContent || ''
 
-		function exitEditing(cancel) {
-			window.__storyEditing = false
+			function exitEditing(cancel) {
+				window.__storyEditing = false
 
-			if (cancel) {
-			storyEl.textContent = storyEl.dataset.last || ''
-			} else {
-			storyEl.dataset.last = storyEl.textContent || ''
-			}
-			storyEl.contentEditable = 'false'
-			if (editBtn) editBtn.style.display = 'block';
-			if (saveBtn) saveBtn.style.display = 'none';
-		}
-
-		function performSave() {
-			const val = (storyEl.textContent || '').trim()
-
-			if (val !== (storyEl.dataset.last || '')) {
-				ws.send('set_story', { story: val })
-				storyEl.dataset.last = val
-				state.story = val
-			}
-
-			exitEditing(false)
-		}
-
-		if (isFac) {
-			if (!window.__storyEditing) {
-			if (editBtn) editBtn.style.display = 'block';
-			if (saveBtn) saveBtn.style.display = 'none';
-			storyEl.contentEditable = 'false'
-			} else {
-			if (editBtn) editBtn.style.display = 'none';
-			if (saveBtn) saveBtn.style.display = 'block';
-			storyEl.contentEditable = 'true'
-			storyEl.focus()
-
-			const range = document.createRange();
-			range.selectNodeContents(storyEl);
-			range.collapse(false);
-
-			const selection = window.getSelection();
-			selection.removeAllRanges();
-			selection.addRange(range);
-			}
-
-			if (!storyEl.dataset._listeners) {
-			if (editBtn) editBtn.addEventListener('click', () => {
-				window.__storyEditing = true
+				if (cancel) {
+				storyEl.textContent = storyEl.dataset.last || ''
+				} else {
 				storyEl.dataset.last = storyEl.textContent || ''
-
-				renderRoom(state)
-			})
-
-			if (saveBtn) saveBtn.addEventListener('click', performSave)
-
-			storyEl.addEventListener('keydown', e => {
-				if (e.key === 'Enter') { e.preventDefault(); performSave() }
-				if (e.key === 'Escape') { e.preventDefault(); exitEditing(true) }
-			})
-
-			storyEl.dataset._listeners = '1'
+				}
+				storyEl.contentEditable = 'false'
+				if (editBtn) editBtn.style.display = 'block';
+				if (saveBtn) saveBtn.style.display = 'none';
 			}
-		} else {
-			window.__storyEditing = false
-			if (editBtn) editBtn.style.display = 'none';
-			if (saveBtn) saveBtn.style.display = 'none';
-			storyEl.contentEditable = 'false'
-		}
+
+			function performSave() {
+				const val = (storyEl.textContent || '').trim()
+
+				if (val !== (storyEl.dataset.last || '')) {
+					ws.send('set_story', { story: val })
+					storyEl.dataset.last = val
+					state.story = val
+				}
+
+				exitEditing(false)
+			}
+
+			if (isFac) {
+				if (!window.__storyEditing) {
+				if (editBtn) editBtn.style.display = 'block';
+				if (saveBtn) saveBtn.style.display = 'none';
+				storyEl.contentEditable = 'false'
+				} else {
+				if (editBtn) editBtn.style.display = 'none';
+				if (saveBtn) saveBtn.style.display = 'block';
+				storyEl.contentEditable = 'true'
+				storyEl.focus()
+
+				const range = document.createRange();
+				range.selectNodeContents(storyEl);
+				range.collapse(false);
+
+				const selection = window.getSelection();
+				selection.removeAllRanges();
+				selection.addRange(range);
+				}
+
+				if (!storyEl.dataset._listeners) {
+				if (editBtn) editBtn.addEventListener('click', () => {
+					window.__storyEditing = true
+					storyEl.dataset.last = storyEl.textContent || ''
+
+					renderRoom(state)
+				})
+
+				if (saveBtn) saveBtn.addEventListener('click', performSave)
+
+				storyEl.addEventListener('keydown', e => {
+					if (e.key === 'Enter') { e.preventDefault(); performSave() }
+					if (e.key === 'Escape') { e.preventDefault(); exitEditing(true) }
+				})
+
+				storyEl.dataset._listeners = '1'
+				}
+			} else {
+				window.__storyEditing = false
+				if (editBtn) editBtn.style.display = 'none';
+				if (saveBtn) saveBtn.style.display = 'none';
+				storyEl.contentEditable = 'false'
+			}
 		}
 
 		// ── Results summary ────────────────────────────────────────
