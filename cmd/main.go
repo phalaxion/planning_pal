@@ -39,6 +39,11 @@ func main() {
 		http.ServeFile(w, r, staticPath+"/room/room.html")
 	})
 
+	// Serve admin page for any /admin/{id} path
+	mux.HandleFunc("/admin/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, staticPath+"/admin/admin.html")
+	})
+
 	// WebSocket endpoint
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		roomID := r.URL.Query().Get("room")

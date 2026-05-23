@@ -446,3 +446,27 @@ footer {
     padding: 20px;
   }
 }
+
+/* ── Debug ────────────────────────────────────────────── */
+.debug-data {
+	position: absolute;
+	display: none;
+	z-index: 10;
+	font-family: var(--mono);
+	font-size: 11px;
+	background: var(--surface);
+	left: 1rem;
+	white-space: pre;
+	border-radius: 8px;
+	padding: 10px 14px;
+	border: 1px solid #b84040;
+	color: #682424;
+}
+
+#status {
+	top: 1rem;
+}
+
+#debug {
+	bottom: 1rem;
+}

@@ -165,7 +165,7 @@ func (r *Room) run() {
 
 				log.Printf("room %s: facilitator unregistered, starting reassign counter", r.ID)
 
-				r.facilitatorTimer = time.AfterFunc(5*time.Second, func() {
+				r.facilitatorTimer = time.AfterFunc(15*time.Second, func() {
 					r.signal(r.facilitatorTimerCh)
 				})
 			}
@@ -178,7 +178,7 @@ func (r *Room) run() {
 
 				log.Printf("room %s: no participants, started cleanup counter", r.ID)
 
-				r.cleanupTimer = time.AfterFunc(5*time.Second, func() {
+				r.cleanupTimer = time.AfterFunc(15*time.Second, func() {
 					r.signal(r.cleanupTimerCh)
 				})
 			}

@@ -50,7 +50,6 @@ body {
     border-radius: 6px;
     padding: 4px 10px;
     width: 100px; 
-	cursor: pointer;
 }
 
 /* ── Story bar ────────────────────────────────────────── */
@@ -355,8 +354,6 @@ body {
     color: var(--ink-muted);
     margin-top: 2px;
 }
-
-
 
 /* ── Responsive ───────────────────────────────────────── */
 @media (max-width: 600px) {
