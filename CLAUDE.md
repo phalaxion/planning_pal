@@ -98,6 +98,10 @@ employee.
 - `999` ("this work is too large to quote") is a sentinel that is **deliberately averaged
   as a number**: one such vote alongside three 5s yields 256, and that blow-up is exactly
   how the room notices someone played it. This is intended — do not "correct" it.
+- During the facilitator's grace period the room genuinely has no facilitator, so every
+  client hides the controls. `awaitingFacilitator` carries the departed facilitator's name
+  through that window purely so the UI can explain itself; it changes nothing about
+  reassignment. `lastFacilitatorName` exists because by then they are out of `participants`.
 - **Votes can still be changed after a reveal, on purpose.** Revealing starts a discussion
   phase where people are meant to move their estimate as the conversation changes their
   mind, so `vote` has no phase guard. This reads like a missing check — it isn't.

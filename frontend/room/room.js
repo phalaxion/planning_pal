@@ -300,6 +300,15 @@
 		const actions = qs('#actions')
 		actions.innerHTML = ''
 
+		// While the facilitator's grace period runs the room has no facilitator,
+		// so nobody sees the controls. Say why, rather than looking broken.
+		if (state.awaitingFacilitator) {
+			const waiting = document.createElement('div')
+			waiting.className = 'facilitator-waiting'
+			waiting.textContent = `Waiting for ${state.awaitingFacilitator} to reconnect…`
+			actions.appendChild(waiting)
+		}
+
 		// Reveal and New round are the facilitator's to press, so they are only
 		// rendered for them. Export is read-only and everyone gets it.
 		if (isFac) {

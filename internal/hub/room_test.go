@@ -45,6 +45,8 @@ type roomState struct {
 	Participants  []models.Participant `json:"participants"`
 	History       []models.RoundResult `json:"history"`
 	YouID         string               `json:"youId"`
+
+	AwaitingFacilitator string `json:"awaitingFacilitator"`
 }
 
 func (s roomState) participant(id string) *models.Participant {
@@ -521,6 +523,61 @@ func TestPromotingSomeoneWhoIsNotPresentIsRejected(t *testing.T) {
 
 	if state.FacilitatorID != "a" {
 		t.Errorf("facilitator = %q, want %q — the room is now stuck", state.FacilitatorID, "a")
+	}
+}
+
+// During the grace period the room has no facilitator at all, so every client
+// hides the controls. These pin the explanation that goes in their place.
+
+func TestRoomNamesTheFacilitatorItIsWaitingFor(t *testing.T) {
+	r, _ := newTestRoom(t)
+
+	alice, _ := join(t, r, "a", "Alice")
+	bob, _ := join(t, r, "b", "Bob")
+
+	r.unregister <- alice
+
+	state := awaitState(t, bob, func(s roomState) bool { return s.AwaitingFacilitator != "" })
+
+	if state.AwaitingFacilitator != "Alice" {
+		t.Errorf("awaitingFacilitator = %q, want %q", state.AwaitingFacilitator, "Alice")
+	}
+	if state.FacilitatorID != "" {
+		t.Errorf("facilitator = %q, want empty during the grace period", state.FacilitatorID)
+	}
+}
+
+func TestWaitingNoticeClearsWhenTheRoleIsReassigned(t *testing.T) {
+	r, _ := newTestRoom(t)
+
+	alice, _ := join(t, r, "a", "Alice")
+	bob, _ := join(t, r, "b", "Bob")
+
+	r.unregister <- alice
+
+	state := awaitState(t, bob, func(s roomState) bool { return s.FacilitatorID == "b" })
+
+	if state.AwaitingFacilitator != "" {
+		t.Errorf("awaitingFacilitator = %q, want empty once the role was reassigned", state.AwaitingFacilitator)
+	}
+}
+
+func TestWaitingNoticeClearsWhenTheFacilitatorReturns(t *testing.T) {
+	r, _ := newTestRoom(t)
+
+	alice, _ := join(t, r, "a", "Alice")
+	bob, _ := join(t, r, "b", "Bob")
+
+	r.unregister <- alice
+	awaitState(t, bob, func(s roomState) bool { return s.AwaitingFacilitator == "Alice" })
+
+	reconnected := newTestClient("a", "Alice")
+	r.register <- reconnected
+
+	state := awaitState(t, bob, func(s roomState) bool { return s.FacilitatorID == "a" })
+
+	if state.AwaitingFacilitator != "" {
+		t.Errorf("awaitingFacilitator = %q, want empty once they came back", state.AwaitingFacilitator)
 	}
 }
 

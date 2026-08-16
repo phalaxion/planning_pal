@@ -27,17 +27,20 @@ const defaultGracePeriod = 15 * time.Second
 const historyWindow = 10
 
 type Room struct {
-	ID                 string
-	participants       map[string]*Client
-	phase              string
-	story              string
-	facilitatorID      string
-	lastFacilitator    string
-	facilitatorTimer   *time.Timer
-	facilitatorTimerCh chan struct{}
-	cleanupTimer       *time.Timer
-	cleanupTimerCh     chan struct{}
-	history            []models.RoundResult
+	ID              string
+	participants    map[string]*Client
+	phase           string
+	story           string
+	facilitatorID   string
+	lastFacilitator string
+	// Kept so the room can say *who* it is waiting for — the client is gone
+	// from participants by then, so their name is no longer reachable.
+	lastFacilitatorName string
+	facilitatorTimer    *time.Timer
+	facilitatorTimerCh  chan struct{}
+	cleanupTimer        *time.Timer
+	cleanupTimerCh      chan struct{}
+	history             []models.RoundResult
 
 	// deck is presentation only — the server never interprets card faces, it
 	// just tells clients which ones to offer.
@@ -99,6 +102,7 @@ func (r *Room) run() {
 		select {
 		case <-r.facilitatorTimerCh:
 			r.lastFacilitator = ""
+			r.lastFacilitatorName = ""
 			r.facilitatorTimer = nil
 
 			log.Printf("room %s: cleared facilitator", r.ID)
@@ -151,6 +155,7 @@ func (r *Room) run() {
 				r.facilitatorTimer = nil
 				r.facilitatorID = c.id
 				r.lastFacilitator = ""
+				r.lastFacilitatorName = ""
 			} else if r.facilitatorID == "" {
 				// Otherwsie if we do not have a facilitator, assign to the new client (first-come-first-serve)
 				r.facilitatorID = c.id
@@ -184,6 +189,7 @@ func (r *Room) run() {
 			// If this was the facilitator make a note and start a timer to promote another after a grace period (to allow for quick rejoins without losing facilitator role)
 			if r.facilitatorID == c.id {
 				r.lastFacilitator = c.id
+				r.lastFacilitatorName = c.name
 				r.facilitatorID = ""
 				if r.facilitatorTimer != nil {
 					r.facilitatorTimer.Stop()
@@ -399,12 +405,13 @@ func (r *Room) broadcastStateToAll() {
 		}
 
 		payload := map[string]interface{}{
-			"roomId":        r.ID,
-			"phase":         r.phase,
-			"story":         r.story,
-			"facilitatorId": r.facilitatorID,
-			"participants":  parts,
-			"youId":         recipient.id,
+			"roomId":              r.ID,
+			"phase":               r.phase,
+			"story":               r.story,
+			"facilitatorId":       r.facilitatorID,
+			"participants":        parts,
+			"youId":               recipient.id,
+			"awaitingFacilitator": r.awaitingFacilitator(),
 		}
 
 		b, _ := json.Marshal(models.Message{Type: "state_update", Payload: mustMarshal(payload)})
@@ -413,6 +420,21 @@ func (r *Room) broadcastStateToAll() {
 			r.dropClient(recipient)
 		}
 	}
+}
+
+// awaitingFacilitator names the departed facilitator while their grace period is
+// still running, and returns "" otherwise.
+//
+// The grace period is deliberate — it lets a facilitator refresh without handing
+// the role away — but during it the room has no facilitator, so every client
+// hides the controls. Naming who we are waiting for turns fifteen seconds of
+// apparently broken UI into something the room can read.
+func (r *Room) awaitingFacilitator() string {
+	if r.facilitatorID == "" && r.facilitatorTimer != nil {
+		return r.lastFacilitatorName
+	}
+
+	return ""
 }
 
 // sendConfig tells one client which deck to render. Sent before that client's

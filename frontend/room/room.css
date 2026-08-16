@@ -132,6 +132,14 @@ body {
     line-height: 1
 }
 
+.facilitator-waiting {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    color: var(--ink-muted);
+    font-style: italic;
+}
+
 .vote-progress {
     margin-left: 10px;
     font-weight: 500;
