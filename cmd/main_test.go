@@ -96,6 +96,55 @@ func get(t *testing.T, url string) string {
 	return string(body)
 }
 
+// A lowercase room code used to open a second, empty room that looked exactly
+// like the right one, so the page URL is canonicalised before anything renders.
+func TestRoomCodesAreCanonicalisedToUppercase(t *testing.T) {
+	srv := httptest.NewServer(newMux("../frontend"))
+	t.Cleanup(srv.Close)
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	cases := []struct {
+		path         string
+		wantRedirect bool
+		wantLocation string
+	}{
+		{"/room/abc123", true, "/room/ABC123"},
+		{"/room/AbC123", true, "/room/ABC123"},
+		{"/room/abc123?name=Alice", true, "/room/ABC123?name=Alice"},
+		{"/admin/abc123", true, "/admin/ABC123"},
+		{"/room/ABC123", false, ""},
+		{"/admin/ABC123", false, ""},
+	}
+
+	for _, c := range cases {
+		resp, err := client.Get(srv.URL + c.path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", c.path, err)
+		}
+		resp.Body.Close()
+
+		if !c.wantRedirect {
+			if resp.StatusCode != http.StatusOK {
+				t.Errorf("GET %s: status %d, want 200 (already canonical)", c.path, resp.StatusCode)
+			}
+			continue
+		}
+
+		if resp.StatusCode != http.StatusFound {
+			t.Errorf("GET %s: status %d, want 302", c.path, resp.StatusCode)
+			continue
+		}
+		if got := resp.Header.Get("Location"); got != c.wantLocation {
+			t.Errorf("GET %s: Location = %q, want %q", c.path, got, c.wantLocation)
+		}
+	}
+}
+
 func TestWebsocketRequiresRoomAndName(t *testing.T) {
 	srv := httptest.NewServer(newMux("../frontend"))
 	t.Cleanup(srv.Close)

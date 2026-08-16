@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/phalaxion/planning_pal/internal/hub"
@@ -64,6 +65,28 @@ func servePage(staticPath, page string) http.Handler {
 	}))
 }
 
+// canonicaliseRoom redirects /room/abc123 to /room/ABC123.
+//
+// Room codes are generated uppercase and the lobby uppercases what you type,
+// but nothing else did — so a hand-typed URL, or a chat client that lowercased
+// a link, silently opened a *second* room with its own history that looked
+// exactly like the right one.
+func canonicaliseRoom(prefix string, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := strings.TrimPrefix(r.URL.Path, prefix)
+		upper := strings.ToUpper(id)
+
+		if id != upper {
+			target := *r.URL
+			target.Path = prefix + upper
+			http.Redirect(w, r, target.String(), http.StatusFound)
+			return
+		}
+
+		h.ServeHTTP(w, r)
+	})
+}
+
 func newMux(staticPath string) *http.ServeMux {
 	mux := http.NewServeMux()
 
@@ -75,14 +98,17 @@ func newMux(staticPath string) *http.ServeMux {
 	mux.Handle("/", servePage(staticPath, "/lobby/lobby.html"))
 
 	// Serve room page for any /room/{id} path
-	mux.Handle("/room/", servePage(staticPath, "/room/room.html"))
+	mux.Handle("/room/", canonicaliseRoom("/room/", servePage(staticPath, "/room/room.html")))
 
 	// Serve admin page for any /admin/{id} path
-	mux.Handle("/admin/", servePage(staticPath, "/admin/admin.html"))
+	mux.Handle("/admin/", canonicaliseRoom("/admin/", servePage(staticPath, "/admin/admin.html")))
 
 	// WebSocket endpoint
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
-		roomID := r.URL.Query().Get("room")
+		// Uppercased here too, not just on the page redirect: this is the value
+		// rooms and stored history are keyed on, and tools connect straight to
+		// the socket without ever loading a page.
+		roomID := strings.ToUpper(r.URL.Query().Get("room"))
 		name := r.URL.Query().Get("name")
 		if roomID == "" || name == "" {
 			http.Error(w, "missing room or name", http.StatusBadRequest)

@@ -70,6 +70,14 @@ employee.
   `Connection.js` is therefore a plain global script like `core.js`, not a module. Don't
   reintroduce `import` between frontend files without solving versioning first.
 
+- **Room codes are canonicalised to uppercase.** `/room/abc123` redirects to `/room/ABC123`
+  and the `/ws` handler uppercases too, since that is the key rooms and stored history use
+  and tools connect to the socket without loading a page. Without this a mistyped or
+  chat-lowercased URL opened a second, empty room that looked exactly right.
+- **Invite links point at the lobby** (`/?room=CODE`), not at the room. A room URL carries
+  `?name=`, so a copied one made the recipient join as the sender — `name_taken`, which is
+  fatal, and they lost the code. The lobby prefills the room so they enter their own name.
+
 ## Gotchas
 
 - `broadcastStateToAll` rebuilds and re-serializes the payload once per recipient, because

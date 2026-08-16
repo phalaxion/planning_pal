@@ -27,7 +27,7 @@
 	roomcodeEl.title = 'Click to copy invite link'
 	roomcodeEl.addEventListener('click', () => {
 		const url = new URL(window.location.href);
-		navigator.clipboard.writeText(`${url.origin}/room/${roomId}?name=${encodeURIComponent(name)}`).then(() => {
+		navigator.clipboard.writeText(`${url.origin}/?room=${encodeURIComponent(roomId)}`).then(() => {
 		roomcodeEl.textContent = '✓ Copied'
 			setTimeout(() => roomcodeEl.textContent = roomId, 1500)
 		})
@@ -229,6 +229,16 @@
 		return (a.name || '').localeCompare(b.name || '') // otherwise sort by name
 		})
 
+		// How many have voted, so the facilitator isn't counting cards to decide
+		// when to reveal. Pointless once revealed — everyone can see.
+		const progressEl = qs('#vote-progress')
+		if (progressEl) {
+			const votedCount = participants.filter(pt => pt.voted).length
+			progressEl.textContent = (state.phase === 'revealed' || !participants.length)
+				? ''
+				: `${votedCount} of ${participants.length} voted`
+		}
+
 		participants.forEach(pt => {
 		const isYou = pt.id === youId
 		const voted = !!pt.voted
@@ -260,6 +270,7 @@
 		const nameEl = document.createElement('div')
 		nameEl.className = 'p-name' + (isYou ? ' is-you' : '')
 		nameEl.textContent = pt.name
+		nameEl.title = pt.name // the card truncates; keep the full name reachable
 		card.appendChild(nameEl)
 
 		p.appendChild(card)
@@ -413,6 +424,16 @@
 		resEl.className = 'avg-value'
 		resEl.textContent = avg !== null ? Math.round(avg * 10) / 10 : '—'
 
+		// The rounded average is the number the team actually takes as the
+		// estimate, so show it rather than making everyone do it in their head.
+		const roundedWrap = qs('#results-rounded-wrap')
+		if (avg !== null) {
+			qs('#results-rounded').textContent = Math.round(avg)
+			roundedWrap.style.display = 'block'
+		} else {
+			roundedWrap.style.display = 'none'
+		}
+
 		// The average alone hides disagreement — 1,3,13 and 5,6,6 average about
 		// the same, and only one of them is worth talking about.
 		if (nums.length) {
@@ -430,6 +451,7 @@
 		resEl.textContent = 'Hidden while voting'
 		consensusBadge.style.visibility = 'hidden';
 		spreadEl.style.display = 'none';
+		qs('#results-rounded-wrap').style.display = 'none';
 		}
 
 		// ── Debug ──────────────────────────────────────────────────

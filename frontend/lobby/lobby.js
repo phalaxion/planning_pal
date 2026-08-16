@@ -4,6 +4,15 @@ try {
         const el = qs('#name')
         if (el && last) el.value = last
 
+        // Invite links land here carrying the room, so the person following one
+        // enters their own name rather than inheriting the sender's.
+        const invited = new URLSearchParams(location.search).get('room')
+        if (invited) {
+            const roomEl = qs('#room')
+            if (roomEl) roomEl.value = invited.trim().toUpperCase()
+            if (el) el.focus()
+        }
+
         const error = new URLSearchParams(location.search).get('error')
         if (error) {
             const message = new URLSearchParams(location.search).get('message')

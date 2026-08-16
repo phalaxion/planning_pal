@@ -47,7 +47,8 @@
 	</header>
 
 	<!-- Participants -->
-	<div class="section-label" style="position:relative;z-index:1;margin-bottom:10px">Participants</div>
+	<div class="section-label" style="position:relative;z-index:1;margin-bottom:10px">Participants<span
+			id="vote-progress" class="vote-progress"></span></div>
 	<section id="participants"></section>
 
 	<!-- Voting deck -->
@@ -70,6 +71,10 @@
 			<div>
 				<div class="avg-label">Average</div>
 				<div class="avg-value" id="results-summary">—</div>
+			</div>
+			<div id="results-rounded-wrap" style="display:none">
+				<div class="avg-label">Rounded</div>
+				<div class="avg-value" id="results-rounded">—</div>
 			</div>
 			<div class="results-spread" id="results-spread" style="display:none">
 				<div>

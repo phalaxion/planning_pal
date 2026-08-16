@@ -16,7 +16,7 @@
 	roomcodeEl.title = 'Click to copy invite link'
 	roomcodeEl.addEventListener('click', () => {
 		const url = new URL(window.location.href);
-		navigator.clipboard.writeText(`${url.origin}/room/${roomId}?name=${encodeURIComponent(name)}`).then(() => {
+		navigator.clipboard.writeText(`${url.origin}/?room=${encodeURIComponent(roomId)}`).then(() => {
 		roomcodeEl.textContent = '✓ Copied'
 			setTimeout(() => roomcodeEl.textContent = roomId, 1500)
 		})
