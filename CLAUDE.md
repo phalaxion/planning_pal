@@ -47,6 +47,13 @@ employee.
   `sync.Once`-guarded `Client.shutdown()`. `Client.deliver()` is the only send path and
   `Room.dropClient()` the only eviction path; use them rather than touching the channel.
 
+- **Static assets are served `Cache-Control: no-cache`** (`cmd/main.go`). The frontend and
+  the websocket protocol it speaks deploy together but cache separately, so a browser
+  running an old `room.js` against a new server fails *silently* — it renders the wrong
+  thing rather than erroring. `no-cache` means revalidate, not don't-store: unchanged files
+  come back as an empty 304. Do not remove it, and do not add long-lived caching without
+  content-hashed filenames.
+
 ## Gotchas
 
 - `broadcastStateToAll` rebuilds and re-serializes the payload once per recipient, because
@@ -94,6 +101,9 @@ tokens, SSO.
 - `store.Save` runs synchronously inside `room.run()`, so slow disk I/O stalls the room.
 - `SQLiteStore.Get` ignores its `roundId` when selecting the round, then fetches a
   different round's votes. Appears to be dead code.
+- All three HTML pages pull webfonts from `fonts.googleapis.com`. For a self-hosted product
+  that is an outbound dependency a customer's network may block, and it leaks that they run
+  this app. Self-hosting the fonts would remove the only external request the app makes.
 
 ## Conventions
 
