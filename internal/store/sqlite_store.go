@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"os"
 	"slices"
 	"time"
 
@@ -22,6 +23,11 @@ type Migration struct {
 }
 
 func NewSQLiteStore(filePath string) (*SQLiteStore, error) {
+	// A fresh install has no store directory, and SQLite will not create one.
+	if err := os.MkdirAll(filePath, 0o755); err != nil {
+		return nil, fmt.Errorf("creating store directory %q: %w", filePath, err)
+	}
+
 	filePath = filePath + "/sqlite.db"
 	db, err := sql.Open("sqlite", filePath)
 	if err != nil {

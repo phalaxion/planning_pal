@@ -38,6 +38,10 @@ type Room struct {
 	cleanupTimerCh     chan struct{}
 	history            []models.RoundResult
 
+	// deck is presentation only — the server never interprets card faces, it
+	// just tells clients which ones to offer.
+	deck []string
+
 	// Grace periods, held as fields so tests can shorten them. Only read by
 	// run(), and only ever written before run() starts.
 	facilitatorGrace time.Duration
@@ -50,9 +54,10 @@ type Room struct {
 	store Store
 }
 
-func newRoom(store *Store, id string) *Room {
+func newRoom(store *Store, id string, deck []string) *Room {
 	r := &Room{
 		ID:                 id,
+		deck:               deck,
 		participants:       make(map[string]*Client),
 		phase:              "voting",
 		story:              "",
@@ -150,6 +155,7 @@ func (r *Room) run() {
 				r.facilitatorID = c.id
 			}
 
+			r.sendConfig(c)
 			r.broadcastStateToAll()
 			r.sendHistory(c)
 
@@ -367,6 +373,19 @@ func (r *Room) broadcastStateToAll() {
 		if !recipient.deliver(b) {
 			r.dropClient(recipient)
 		}
+	}
+}
+
+// sendConfig tells one client which deck to render. Sent before that client's
+// first state update, so the cards are known by the time anything draws.
+func (r *Room) sendConfig(c *Client) {
+	b, _ := json.Marshal(models.Message{
+		Type:    "config",
+		Payload: mustMarshal(map[string]interface{}{"deck": r.deck}),
+	})
+
+	if !c.deliver(b) {
+		r.dropClient(c)
 	}
 }
 

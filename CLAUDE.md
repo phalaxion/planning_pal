@@ -68,11 +68,13 @@ employee.
   next broadcast onward.
 - `clientId` lives in `sessionStorage`, so identity survives a refresh but not a tab
   close. Two tabs means two identities sharing one name, which trips `name_taken`.
-- The deck contains sentinels. `?` and `☕` are excluded from averages. `999` ("this work
-  is too large to quote") is **deliberately included**: one such vote alongside three 5s
-  yields an average of 256, and that blow-up is exactly how the room notices someone
-  played it. This is intended behaviour — do not "correct" it, and do not backfill the
-  `AverageVote` values already stored.
+- The deck lives on the server (`PPAL_DECK`, default in `hub.defaultDeck`) and is sent to
+  each client on join. The frontend holds no copy — don't reintroduce one. Averaging drops
+  anything non-numeric, so it works for any deck without knowing the faces.
+- `999` ("this work is too large to quote") is a sentinel that is **deliberately averaged
+  as a number**: one such vote alongside three 5s yields 256, and that blow-up is exactly
+  how the room notices someone played it. This is intended — do not "correct" it, and do
+  not backfill the `AverageVote` values already stored.
 - SQLite gave `votes.vote` REAL affinity when it was declared REAL, so numeric card faces
   are stored as `5.0`, not `"5"`. They read back as `"5"` only because Go formats the float
   that way. Any future move of that column — or a port to another engine — has to convert
@@ -80,20 +82,19 @@ employee.
 
 ## Work queue
 
-Ordered. Done so far: room state-machine tests, server-side facilitator enforcement, the
-`send`-channel lifecycle fix, the `state_update`/`history_update` split, the capped history
-window, the honest CSV export, and the votes.vote REAL to TEXT migration.
+**The queue is empty.** Completed: room state-machine tests, server-side facilitator
+enforcement, the `send`-channel lifecycle fix, the `state_update`/`history_update` split,
+the capped history window, the honest CSV export, the `votes.vote` REAL→TEXT migration,
+`Cache-Control: no-cache` on static assets, the configurable deck, and store directory
+creation on startup.
 
-1. **Deck configurable per deployment** via env var or config file. Currently hardcoded in
-   `frontend/room/room.js`. Per-room decks are the likely eventual answer, but there's no
-   user asking yet.
-2. **Create the store directory on startup.** `make run` fails on a fresh clone: it points
-   at `./data`, nothing creates it, and `data/` is gitignored. Self-hosters hit this on
-   install. `os.MkdirAll` in the store constructors.
+Deferred by decision, not oversight:
 
-Deferred by decision, not oversight: pagination and a full-history view (which would also
-let the export cover more than the window), per-room decks, room passphrases and invite
-tokens, SSO.
+- Pagination and a full-history view — would also let the export cover more than the window
+- Per-room decks — `PPAL_DECK` is currently one deck for the whole server
+- Room passphrases and invite tokens
+- SSO, and with it reading identity from a trusted proxy header rather than the `name` query param
+- Tracker integrations and cross-sprint analytics, i.e. the actual paid surface
 
 ## Known-open, deliberately unscheduled
 

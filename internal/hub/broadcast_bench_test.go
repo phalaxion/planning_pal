@@ -12,7 +12,7 @@ func benchmarkBroadcast(b *testing.B, participants int) {
 	fs := &fakeStore{}
 	var s Store = fs
 
-	r := newRoom(&s, "BENCH")
+	r := newRoom(&s, "BENCH", defaultDeck)
 	r.story = "PP-1421 Rework the invoice reconciliation screen"
 	r.facilitatorID = "c0"
 

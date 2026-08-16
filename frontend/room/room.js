@@ -1,7 +1,10 @@
 import Connection from "../core/Connection.js";
 
 (function () {
-	const deck = ['1', '2', '3', '4', '5', '6', '8', '10', '12', '16', '20', '999', '?', '☕'];
+	// The deck is deployment configuration, sent by the server before the first
+	// state update. Deliberately not defaulted here — one source of truth beats
+	// two copies that drift.
+	let deck = [];
 
 	const clientId = getClientId();
 	const name = getName();
@@ -42,6 +45,9 @@ import Connection from "../core/Connection.js";
 			}
 			else if (msg.type === 'state_update') {
 				renderRoom(payload)
+			}
+			else if (msg.type === 'config') {
+				deck = Array.isArray(payload.deck) ? payload.deck : []
 			}
 			else if (msg.type === 'history_update') {
 				history = Array.isArray(payload.history) ? payload.history : []
@@ -281,7 +287,7 @@ import Connection from "../core/Connection.js";
 			if (story !== null) {
 				const nums = state.participants
 				.map(p => p.vote)
-				.filter(v => v && v !== '' && v !== '-' && v !== '?' && v !== '☕')
+				.filter(v => v)
 				.map(v => Number(v))
 				.filter(n => isFinite(n))
 				const lastRoundAverage = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0
@@ -383,7 +389,7 @@ import Connection from "../core/Connection.js";
 		if (state.phase === 'revealed') {
 		const nums = state.participants
 			.map(p => p.vote)
-			.filter(v => v && v !== '' && v !== '-' && v !== '?' && v !== '☕')
+			.filter(v => v)
 			.map(v => Number(v))
 			.filter(n => isFinite(n))
 		const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null

@@ -67,7 +67,7 @@ func newTestRoom(t *testing.T) (*Room, *fakeStore) {
 	fs := &fakeStore{}
 	var s Store = fs
 
-	r := newRoom(&s, t.Name())
+	r := newRoom(&s, t.Name(), defaultDeck)
 	r.facilitatorGrace = 25 * time.Millisecond
 	r.cleanupDelay = 25 * time.Millisecond
 
@@ -105,6 +105,10 @@ func join(t *testing.T, r *Room, id, name string) (*Client, roomState) {
 // awaitState reads state updates until one satisfies pred. Broadcasts are sent
 // to every participant on every change, so tests must skip past the states they
 // aren't asserting on rather than assuming the next one matches.
+//
+// Note that the await* helpers *discard* messages of other types as they scan.
+// A test that needs both a config and a state update has to read them in the
+// order the room sends them, or register the client by hand.
 func awaitState(t *testing.T, c *Client, pred func(roomState) bool) roomState {
 	t.Helper()
 
@@ -169,6 +173,41 @@ func awaitError(t *testing.T, c *Client) string {
 			return payload.Code
 		case <-deadline:
 			t.Fatalf("client %s: timed out awaiting error", c.id)
+		}
+	}
+}
+
+// awaitConfig reads until a config message arrives and returns its deck.
+func awaitConfig(t *testing.T, c *Client) []string {
+	t.Helper()
+
+	deadline := time.After(2 * time.Second)
+
+	for {
+		select {
+		case b, ok := <-c.send:
+			if !ok {
+				t.Fatalf("client %s: send channel closed while awaiting config", c.id)
+			}
+
+			var m models.Message
+			if err := json.Unmarshal(b, &m); err != nil {
+				t.Fatalf("client %s: unmarshal message: %v", c.id, err)
+			}
+			if m.Type != "config" {
+				continue
+			}
+
+			var payload struct {
+				Deck []string `json:"deck"`
+			}
+			if err := json.Unmarshal(m.Payload, &payload); err != nil {
+				t.Fatalf("client %s: unmarshal config payload: %v", c.id, err)
+			}
+
+			return payload.Deck
+		case <-deadline:
+			t.Fatalf("client %s: timed out awaiting config", c.id)
 		}
 	}
 }
@@ -599,7 +638,7 @@ func TestHistoryIsLoadedFromStoreOnRoomCreation(t *testing.T) {
 	}}
 	var s Store = fs
 
-	r := newRoom(&s, t.Name())
+	r := newRoom(&s, t.Name(), defaultDeck)
 	r.facilitatorGrace = 25 * time.Millisecond
 	r.cleanupDelay = 25 * time.Millisecond
 	go r.run()
@@ -712,7 +751,7 @@ func TestRoomAsksTheStoreOnlyForTheWindow(t *testing.T) {
 	}
 
 	var s Store = fs
-	r := newRoom(&s, t.Name())
+	r := newRoom(&s, t.Name(), defaultDeck)
 	r.facilitatorGrace = 25 * time.Millisecond
 	r.cleanupDelay = 25 * time.Millisecond
 	go r.run()

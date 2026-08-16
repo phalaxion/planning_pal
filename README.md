@@ -22,6 +22,25 @@ WebSocket endpoint: `ws://localhost:8080/ws?room=ROOMID&name=NAME`
 go run ./tools/wsmon -room=TEST -name=Alice
 ```
 
+## Configuration
+
+All settings are environment variables.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `STATIC_PATH` | `frontend` | Directory holding the frontend files |
+| `PPAL_STORE_PATH` | `/var/lib/planning-pal` | Where round history is kept. Created on startup if missing |
+| `PPAL_STORE_TYPE` | `json` | `json` or `sqlite` |
+| `PPAL_DECK` | `1,2,3,4,5,6,8,10,12,16,20,999,?,☕` | Comma-separated card faces offered in every room |
+
+`PPAL_DECK` accepts any faces you like — Fibonacci (`1,2,3,5,8,13,21,?`), T-shirt sizes
+(`XS,S,M,L,XL,?`), hours, whatever suits. Surrounding spaces are trimmed and empty entries
+dropped; an unusable value falls back to the default rather than leaving a room with no
+cards. Non-numeric faces are excluded from the average automatically, so a deck with no
+numbers in it simply shows no average.
+
+The deck is one setting for the whole server, so every room shares it.
+
 ## Deployment
 
 ### Data Store Setup
@@ -97,6 +116,7 @@ RestartSec=3
 Environment=STATIC_PATH=/var/www/planning-pal
 Environment=PPAL_STORE_PATH=/var/lib/planning-pal
 Environment=PPAL_STORE_TYPE=sqlite
+# Environment=PPAL_DECK=1,2,3,5,8,13,21,?,☕
 
 [Install]
 WantedBy=multi-user.target

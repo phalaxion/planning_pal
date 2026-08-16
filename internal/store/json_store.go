@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"slices"
 	"sync"
@@ -21,6 +22,13 @@ type resultList struct {
 }
 
 func NewJSONStore(filePath string) *JSONStore {
+	// A fresh install has no store directory. Reads tolerate a missing file, so
+	// without this the first write is the first thing to fail — after a round
+	// has already been played.
+	if err := os.MkdirAll(filePath, 0o755); err != nil {
+		log.Printf("creating store directory %q: %v", filePath, err)
+	}
+
 	filePath = filePath + "/results.json"
 	return &JSONStore{FilePath: filePath}
 }
