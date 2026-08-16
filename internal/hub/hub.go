@@ -12,7 +12,9 @@ import (
 
 type Store interface {
 	Get(room string, id string) (*models.RoundResult, error)
-	List(room string) ([]models.RoundResult, error)
+	// List returns a room's rounds oldest first. A positive limit returns only
+	// that many of the most recent rounds; zero or less returns all of them.
+	List(room string, limit int) ([]models.RoundResult, error)
 	Save(room string, result models.RoundResult) error
 	Delete(room string, id string) error
 }

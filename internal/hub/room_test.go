@@ -2,6 +2,7 @@ package hub
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -11,13 +12,24 @@ import (
 // ── Test doubles ────────────────────────────────────────────────────────────
 
 type fakeStore struct {
-	history []models.RoundResult
-	saved   []models.RoundResult
+	history   []models.RoundResult
+	saved     []models.RoundResult
+	lastLimit int
 }
 
 func (f *fakeStore) Get(room string, id string) (*models.RoundResult, error) { return nil, nil }
-func (f *fakeStore) List(room string) ([]models.RoundResult, error)          { return f.history, nil }
 func (f *fakeStore) Delete(room string, id string) error                     { return nil }
+
+func (f *fakeStore) List(room string, limit int) ([]models.RoundResult, error) {
+	f.lastLimit = limit
+
+	results := f.history
+	if limit > 0 && len(results) > limit {
+		results = results[len(results)-limit:]
+	}
+
+	return results, nil
+}
 
 func (f *fakeStore) Save(room string, result models.RoundResult) error {
 	f.saved = append(f.saved, result)
@@ -649,6 +661,74 @@ func TestJoiningClientReceivesHistory(t *testing.T) {
 	}
 	if received[0].Story != "PP-1" {
 		t.Errorf("history[0].story = %q, want %q", received[0].Story, "PP-1")
+	}
+}
+
+func TestHistoryWindowIsCappedDuringALongSession(t *testing.T) {
+	r, fs := newTestRoom(t)
+
+	alice, _ := join(t, r, "a", "Alice")
+	awaitHistory(t, alice)
+
+	// Close more rounds than the window holds, all within one session.
+	rounds := historyWindow + 4
+	var history []models.RoundResult
+
+	for i := 1; i <= rounds; i++ {
+		story := fmt.Sprintf("PP-%d", i)
+		send(r, alice, "set_story", map[string]string{"story": story})
+		awaitState(t, alice, func(s roomState) bool { return s.Story == story })
+
+		send(r, alice, "vote", map[string]string{"card": "5"})
+		send(r, alice, "new_round", map[string]interface{}{"story": "", "lastRoundAverage": 5.0})
+		history = awaitHistory(t, alice)
+	}
+
+	if len(history) != historyWindow {
+		t.Fatalf("history length = %d, want %d", len(history), historyWindow)
+	}
+
+	// The window must hold the newest rounds, in chronological order.
+	if got, want := history[0].Story, fmt.Sprintf("PP-%d", rounds-historyWindow+1); got != want {
+		t.Errorf("oldest retained story = %q, want %q", got, want)
+	}
+	if got, want := history[len(history)-1].Story, fmt.Sprintf("PP-%d", rounds); got != want {
+		t.Errorf("newest retained story = %q, want %q", got, want)
+	}
+
+	// Trimming is a display concern — every round must still be persisted.
+	if len(fs.saved) != rounds {
+		t.Errorf("persisted %d rounds, want %d — trimming must not drop history from the store", len(fs.saved), rounds)
+	}
+}
+
+func TestRoomAsksTheStoreOnlyForTheWindow(t *testing.T) {
+	fs := &fakeStore{}
+	for i := 1; i <= historyWindow+5; i++ {
+		fs.history = append(fs.history, models.RoundResult{
+			ID:    fmt.Sprintf("r%d", i),
+			Story: fmt.Sprintf("PP-%d", i),
+		})
+	}
+
+	var s Store = fs
+	r := newRoom(&s, t.Name())
+	r.facilitatorGrace = 25 * time.Millisecond
+	r.cleanupDelay = 25 * time.Millisecond
+	go r.run()
+
+	if fs.lastLimit != historyWindow {
+		t.Errorf("store queried with limit %d, want %d", fs.lastLimit, historyWindow)
+	}
+
+	alice, _ := join(t, r, "a", "Alice")
+	loaded := awaitHistory(t, alice)
+
+	if len(loaded) != historyWindow {
+		t.Fatalf("loaded %d rounds, want %d", len(loaded), historyWindow)
+	}
+	if got, want := loaded[len(loaded)-1].Story, fmt.Sprintf("PP-%d", historyWindow+5); got != want {
+		t.Errorf("newest loaded story = %q, want %q", got, want)
 	}
 }
 

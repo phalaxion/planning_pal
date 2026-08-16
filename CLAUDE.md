@@ -41,14 +41,20 @@ employee.
 - `GlobalHub`'s room map is the one place a mutex is correct.
 - Timer callbacks use the non-blocking `signal()` helper so a wedged run loop can't leak
   goroutines.
+- **`Client.send` is never closed.** It has several writers, so closing it panics whichever
+  one loses the race — and an unrecovered panic in the room goroutine takes down the whole
+  process, every room on the server. Shutdown is signalled by closing `Client.done` via the
+  `sync.Once`-guarded `Client.shutdown()`. `Client.deliver()` is the only send path and
+  `Room.dropClient()` the only eviction path; use them rather than touching the channel.
 
 ## Gotchas
 
 - `broadcastStateToAll` rebuilds and re-serializes the **entire** payload once per
   recipient. Vote masking is why. It should become one shared masked payload plus a small
   private per-client message carrying that client's own vote.
-- A full `send` buffer **closes the client's channel** rather than dropping the message.
-  Oversized broadcasts therefore present as random disconnects mid-vote, not as slowness.
+- `broadcastStateToAll` snapshots the participant list before delivering, so the broadcast
+  that drops an unresponsive client still lists them. The eviction is only visible from the
+  next broadcast onward.
 - `clientId` lives in `sessionStorage`, so identity survives a refresh but not a tab
   close. Two tabs means two identities sharing one name, which trips `name_taken`.
 - The deck contains sentinels that are not estimates: `?`, `☕`, and `999`
@@ -57,32 +63,30 @@ employee.
 
 ## Work queue
 
-Ordered. Tests come first because items 2–4 all change what every client receives, and
-there is currently no way to detect a regression in the reconnect or facilitator-handoff
-paths except by reproducing it by hand.
+Ordered. Done so far: room state-machine tests, server-side facilitator enforcement, the
+`send`-channel lifecycle fix, the `state_update`/`history_update` split, and the capped
+history window.
 
-1. **Room state-machine tests.** Add a seam for `Client.conn` (interface or nil guard —
-   `run()` calls `conn.Close()` on the reconnect path). Cover facilitator handoff and
-   grace-period restore, reconnect-by-`clientId`, stale unregister, name collision.
-2. **Server-side facilitator enforcement** on `reveal`, `new_round`, `set_story`, and
-   `promote`. Today these are unchecked; the frontend only hides the buttons.
-3. **Split the protocol.** `state_update` carries live state only. A new `history_update`
-   is sent on join and on `new_round`. History changes only on `new_round`, so shipping
-   it on every vote is pure waste.
-4. **Cap the history window to 10.** `r.history` becomes a rolling 10-item window; `List`
-   gains `ORDER BY timestamp DESC LIMIT 10`. It currently has no `ORDER BY` at all and
-   works only because SQLite returns rowid order.
-5. **Demote the CSV export.** It builds from `state.history`, so a capped window silently
-   turns it into "export last 10" while still looking complete. Relabel or remove.
-6. **Exclude `999` from averages** in both the results summary and the `new_round`
-   payload. Persisted `AverageVote` values are wrong wherever a `999` was cast.
-7. **Single-serialization broadcast** (see Gotchas).
-8. **`votes.vote` `REAL` → `TEXT` migration.** The column is declared `REAL`, stores text
+1. **Demote the CSV export.** It builds from the client's `history`, which is now capped at
+   ten rounds, so it silently exports the last ten while looking complete. Relabel or
+   remove until the full-history view exists.
+2. **Exclude `999` from averages** in both the results summary and the `new_round` payload.
+   `999` means "too large to quote", so averaging it as a number is wrong — one such vote
+   alongside three 5s yields 256. Persisted `AverageVote` values are wrong wherever a `999`
+   was cast.
+3. **Single-serialization broadcast** (see Gotchas).
+4. **`votes.vote` `REAL` → `TEXT` migration.** The column is declared `REAL`, stores text
    (`?`, `☕`), and is scanned back as a string. Fine under SQLite, breaks immediately
    under Postgres or any strict store.
-9. **Deck configurable per deployment** via env var or config file. Currently hardcoded
-   in `frontend/room/room.js`. Per-room decks are the likely eventual answer, but there's
-   no user asking yet.
+5. **Deck configurable per deployment** via env var or config file. Currently hardcoded in
+   `frontend/room/room.js`. Per-room decks are the likely eventual answer, but there's no
+   user asking yet.
+6. **Create the store directory on startup.** `make run` fails on a fresh clone: it points
+   at `./data`, nothing creates it, and `data/` is gitignored. Self-hosters hit this on
+   install. `os.MkdirAll` in the store constructors.
+
+Deferred by decision, not oversight: pagination and a full-history view (needed before the
+CSV export can be honest), per-room decks, room passphrases and invite tokens, SSO.
 
 ## Known-open, deliberately unscheduled
 

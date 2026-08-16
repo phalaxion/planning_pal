@@ -44,7 +44,7 @@ func (s *JSONStore) Get(room string, id string) (*models.RoundResult, error) {
 	return nil, fmt.Errorf("Result not found")
 }
 
-func (s *JSONStore) List(room string) ([]models.RoundResult, error) {
+func (s *JSONStore) List(room string, limit int) ([]models.RoundResult, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -54,7 +54,13 @@ func (s *JSONStore) List(room string) ([]models.RoundResult, error) {
 		return nil, err
 	}
 
-	return list.Results[room], nil
+	// Results are appended as rounds close, so the tail is the most recent.
+	results := list.Results[room]
+	if limit > 0 && len(results) > limit {
+		results = results[len(results)-limit:]
+	}
+
+	return results, nil
 }
 
 func (s *JSONStore) Save(room string, result models.RoundResult) error {

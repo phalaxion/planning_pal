@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"slices"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -147,8 +148,19 @@ func (s *SQLiteStore) Get(room string, roundId string) (*models.RoundResult, err
 	return round, nil
 }
 
-func (s *SQLiteStore) List(room string) ([]models.RoundResult, error) {
-	rows, err := s.DB.Query(`SELECT id, story, averagevote, timestamp FROM rounds WHERE roomid = ?`, room)
+func (s *SQLiteStore) List(room string, limit int) ([]models.RoundResult, error) {
+	// Timestamps are stored at second resolution, so rounds closed in quick
+	// succession tie. rowid breaks the tie by insertion order, without which
+	// "the most recent ten" is not a well defined set.
+	query := `SELECT id, story, averagevote, timestamp FROM rounds WHERE roomid = ? ORDER BY timestamp DESC, rowid DESC`
+	args := []any{room}
+
+	if limit > 0 {
+		query += ` LIMIT ?`
+		args = append(args, limit)
+	}
+
+	rows, err := s.DB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -186,6 +198,10 @@ func (s *SQLiteStore) List(room string) ([]models.RoundResult, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+
+	// The query selects newest first so LIMIT takes the right end; callers
+	// expect chronological order.
+	slices.Reverse(rounds)
 
 	return rounds, nil
 }

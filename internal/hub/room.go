@@ -20,6 +20,11 @@ type inboundMessage struct {
 // let a browser refresh complete without losing state.
 const defaultGracePeriod = 15 * time.Second
 
+// historyWindow is how many recent rounds a room keeps in memory and sends to
+// clients. The store keeps every round; anything older than the window is only
+// reachable through it.
+const historyWindow = 10
+
 type Room struct {
 	ID                 string
 	participants       map[string]*Client
@@ -62,7 +67,7 @@ func newRoom(store *Store, id string) *Room {
 		store: *store,
 	}
 
-	history, err := r.store.List(r.ID)
+	history, err := r.store.List(r.ID, historyWindow)
 
 	if err != nil {
 		log.Printf("room %s: failed to load history error: %v", id, err)
@@ -269,7 +274,15 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 			c.handleError("history_failed", fmt.Sprintf("Failed to save round result: %v", err), false)
 		}
 
+		// Keep the window bounded regardless of how long a session runs. The
+		// tail is copied into a fresh slice rather than re-sliced so the dropped
+		// rounds do not stay reachable through the backing array.
 		r.history = append(r.history, result)
+		if len(r.history) > historyWindow {
+			trimmed := make([]models.RoundResult, historyWindow)
+			copy(trimmed, r.history[len(r.history)-historyWindow:])
+			r.history = trimmed
+		}
 
 		r.story = payload.Story
 		r.phase = "voting"
