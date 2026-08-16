@@ -56,13 +56,17 @@ type Room struct {
 	unregister chan *Client
 	inbound    chan inboundMessage
 
+	// hub is held so a room can remove itself once empty. It used to reach for
+	// a package-level global to do that.
+	hub   *Hub
 	store Store
 }
 
-func newRoom(store *Store, id string, deck []string) *Room {
+func newRoom(h *Hub, id string) *Room {
 	r := &Room{
 		ID:                 id,
-		deck:               deck,
+		hub:                h,
+		deck:               h.deck,
 		participants:       make(map[string]*Client),
 		phase:              "voting",
 		story:              "",
@@ -74,7 +78,7 @@ func newRoom(store *Store, id string, deck []string) *Room {
 		facilitatorGrace:   defaultGracePeriod,
 		cleanupDelay:       defaultGracePeriod,
 
-		store: *store,
+		store: h.store,
 	}
 
 	history, err := r.store.List(r.ID, historyWindow)
@@ -122,7 +126,7 @@ func (r *Room) run() {
 				r.facilitatorTimer.Stop()
 			}
 
-			GlobalHub.Delete(r.ID)
+			r.hub.Delete(r.ID)
 
 			log.Printf("room %s: closed room", r.ID)
 

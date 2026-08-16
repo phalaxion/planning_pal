@@ -43,7 +43,14 @@ employee.
   phase, story, history, facilitator). Everything else communicates via the `register`,
   `unregister`, and `inbound` channels. Do not add locks to `Room`; do not touch its
   fields from a handler or timer callback — signal the run loop instead.
-- `GlobalHub`'s room map is the one place a mutex is correct.
+- The `Hub`'s room map is the one place a mutex is correct.
+- **The store is injected, not global.** `main()` builds it via `hub.StoreFromEnv()` and
+  hands it to `hub.NewHub`; a `Room` holds a `*Hub` so it can remove itself when empty.
+  This used to be `var GlobalHub = NewHub()` — importing the package created directories
+  and could `log.Fatalf`, so a test binary died before running anything. Don't reintroduce
+  package-level state that touches the filesystem at init.
+- **SQLite is the only store.** The JSON backend was retired because every stored feature
+  had to be written twice. `PPAL_STORE_TYPE=json` now fails loudly at startup.
 - Timer callbacks use the non-blocking `signal()` helper so a wedged run loop can't leak
   goroutines.
 - **`Client.send` is never closed.** It has several writers, so closing it panics whichever

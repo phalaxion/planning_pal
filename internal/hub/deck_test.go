@@ -50,11 +50,12 @@ func TestJoiningClientReceivesTheDeck(t *testing.T) {
 
 func TestRoomServesItsConfiguredDeck(t *testing.T) {
 	fs := &fakeStore{}
-	var s Store = fs
-
 	want := []string{"S", "M", "L", "XL", "?"}
 
-	r := newRoom(&s, t.Name(), want)
+	h := NewHub(fs)
+	h.deck = want
+
+	r := newRoom(h, t.Name())
 	r.facilitatorGrace = 25 * time.Millisecond
 	r.cleanupDelay = 25 * time.Millisecond
 	go r.run()

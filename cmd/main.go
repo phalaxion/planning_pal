@@ -87,7 +87,7 @@ func canonicaliseRoom(prefix string, h http.Handler) http.Handler {
 	})
 }
 
-func newMux(staticPath string) *http.ServeMux {
+func newMux(staticPath string, rooms *hub.Hub) *http.ServeMux {
 	mux := http.NewServeMux()
 
 	// Static files
@@ -123,7 +123,7 @@ func newMux(staticPath string) *http.ServeMux {
 
 		clientId := r.URL.Query().Get("clientId")
 		client := hub.NewClient(conn, name, clientId)
-		room := hub.GlobalHub.GetOrCreateRoom(roomID)
+		room := rooms.GetOrCreateRoom(roomID)
 		client.Start(room)
 	})
 
@@ -138,7 +138,12 @@ func main() {
 		staticPath = "frontend" // fallback for local dev
 	}
 
-	mux := newMux(staticPath)
+	store, err := hub.StoreFromEnv()
+	if err != nil {
+		log.Fatalf("store: %v", err)
+	}
+
+	mux := newMux(staticPath, hub.NewHub(store))
 
 	log.Printf("listening on %s", *addr)
 	if err := http.ListenAndServe(*addr, mux); err != nil {

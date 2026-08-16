@@ -10,9 +10,10 @@ import (
 // loop, since every vote has to be rewritten for every other viewer.
 func benchmarkBroadcast(b *testing.B, participants int) {
 	fs := &fakeStore{}
-	var s Store = fs
+	h := NewHub(fs)
+	h.deck = defaultDeck
 
-	r := newRoom(&s, "BENCH", defaultDeck)
+	r := newRoom(h, "BENCH")
 	r.story = "PP-1421 Rework the invoice reconciliation screen"
 	r.facilitatorID = "c0"
 

@@ -1,12 +1,12 @@
 package hub
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
 	"sync"
 
-	store_type "github.com/phalaxion/planning_pal/internal/enum"
 	"github.com/phalaxion/planning_pal/internal/models"
 	"github.com/phalaxion/planning_pal/internal/store"
 )
@@ -51,43 +51,38 @@ type Hub struct {
 	deck  []string
 }
 
-var GlobalHub = NewHub()
+// NewHub builds a hub around an already-constructed store.
+//
+// The store is injected rather than built here on purpose. This used to be a
+// package-level `var GlobalHub = NewHub()`, which meant merely importing this
+// package created directories and could call log.Fatalf — so any test binary
+// that touched it died before running a single test.
+func NewHub(store Store) *Hub {
+	return &Hub{
+		rooms: make(map[string]*Room),
+		store: store,
+		deck:  parseDeck(os.Getenv("PPAL_DECK")),
+	}
+}
 
-func NewHub() *Hub {
+// StoreFromEnv builds the configured store. SQLite is the only backend; the
+// JSON store was retired because every stored feature had to be written twice.
+func StoreFromEnv() (Store, error) {
 	storePath := os.Getenv("PPAL_STORE_PATH")
 	if storePath == "" {
 		storePath = "/var/lib/planning-pal"
 	}
 
-	storeType := os.Getenv("PPAL_STORE_TYPE")
-	if storeType == "" {
-		storeType = "json"
+	switch storeType := os.Getenv("PPAL_STORE_TYPE"); storeType {
+	case "", "sqlite":
+		return store.NewSQLiteStore(storePath)
+	case "json":
+		return nil, fmt.Errorf(
+			"PPAL_STORE_TYPE=json is no longer supported; set it to sqlite. "+
+				"Any history in %s/results.json will not be read", storePath)
+	default:
+		return nil, fmt.Errorf("invalid PPAL_STORE_TYPE %q, want sqlite", storeType)
 	}
-
-	storeTypeEnum, err := store_type.ValueOf(storeType)
-	if err != nil {
-		log.Fatalf("Invalid store type %q", storeType)
-	}
-
-	hub := Hub{
-		rooms: make(map[string]*Room),
-		deck:  parseDeck(os.Getenv("PPAL_DECK")),
-	}
-
-	switch storeTypeEnum {
-	case store_type.JSON:
-		hub.store = store.NewJSONStore(storePath)
-	case store_type.SQLITE:
-		sqliteStore, err := store.NewSQLiteStore(storePath)
-
-		if err != nil {
-			log.Fatalf("Failed to initialize SQLite store: %v", err)
-		}
-
-		hub.store = sqliteStore
-	}
-
-	return &hub
 }
 
 func (h *Hub) Get(roomID string) (*Room, bool) {
@@ -111,7 +106,7 @@ func (h *Hub) GetOrCreateRoom(roomID string) *Room {
 		return r
 	}
 
-	r := newRoom(&h.store, roomID, h.deck)
+	r := newRoom(h, roomID)
 	h.rooms[roomID] = r
 	go r.run()
 

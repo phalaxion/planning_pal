@@ -30,7 +30,7 @@ All settings are environment variables.
 | --- | --- | --- |
 | `STATIC_PATH` | `frontend` | Directory holding the frontend files |
 | `PPAL_STORE_PATH` | `/var/lib/planning-pal` | Where round history is kept. Created on startup if missing |
-| `PPAL_STORE_TYPE` | `json` | `json` or `sqlite` |
+| `PPAL_STORE_TYPE` | `sqlite` | Only `sqlite` is supported |
 | `PPAL_DECK` | `1,2,3,4,5,6,8,10,12,16,20,999,?,☕` | Comma-separated card faces offered in every room |
 
 `PPAL_DECK` accepts any faces you like — Fibonacci (`1,2,3,5,8,13,21,?`), T-shirt sizes
@@ -40,6 +40,12 @@ cards. Non-numeric faces are excluded from the average automatically, so a deck 
 numbers in it simply shows no average.
 
 The deck is one setting for the whole server, so every room shares it.
+
+SQLite is the only storage backend. It is pure Go — no cgo, no database server, just
+a file — so it costs a self-hosted install nothing. The old JSON backend has been removed;
+setting `PPAL_STORE_TYPE=json` now fails at startup rather than starting with empty
+history. If you ever ran without `PPAL_STORE_TYPE` set, your history is in a
+`results.json` in the store directory and will not be read.
 
 ## Deployment
 

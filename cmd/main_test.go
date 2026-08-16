@@ -6,14 +6,32 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/phalaxion/planning_pal/internal/hub"
+	"github.com/phalaxion/planning_pal/internal/store"
 )
+
+// testMux wires the real mux to a real store in a temp directory. The store is
+// injected rather than global, so each test gets its own and none of them touch
+// the configured data directory.
+func testMux(t *testing.T) *http.ServeMux {
+	t.Helper()
+
+	s, err := store.NewSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	t.Cleanup(func() { s.DB.Close() })
+
+	return newMux("../frontend", hub.NewHub(s))
+}
 
 // The frontend and the websocket protocol it speaks are deployed together but
 // cached separately, so a browser reusing an old room.js against a new server
 // misbehaves silently. Every asset must therefore be revalidated, not merely
 // cached with a Last-Modified date and left to heuristic freshness.
 func TestAssetsAreRevalidated(t *testing.T) {
-	srv := httptest.NewServer(newMux("../frontend"))
+	srv := httptest.NewServer(testMux(t))
 	t.Cleanup(srv.Close)
 
 	paths := []string{
@@ -44,7 +62,7 @@ func TestAssetsAreRevalidated(t *testing.T) {
 }
 
 func TestPagesCarryAStampedAssetVersion(t *testing.T) {
-	srv := httptest.NewServer(newMux("../frontend"))
+	srv := httptest.NewServer(testMux(t))
 	t.Cleanup(srv.Close)
 
 	for _, p := range []string{"/", "/room/ABC123", "/admin/ABC123"} {
@@ -65,7 +83,7 @@ func TestPagesCarryAStampedAssetVersion(t *testing.T) {
 // Versioned URLs must still resolve — the query string is a cache key, and the
 // file server has to ignore it.
 func TestVersionedAssetURLsStillServeTheFile(t *testing.T) {
-	srv := httptest.NewServer(newMux("../frontend"))
+	srv := httptest.NewServer(testMux(t))
 	t.Cleanup(srv.Close)
 
 	body := get(t, srv.URL+"/static/room/room.js?v="+assetVersion)
@@ -99,7 +117,7 @@ func get(t *testing.T, url string) string {
 // A lowercase room code used to open a second, empty room that looked exactly
 // like the right one, so the page URL is canonicalised before anything renders.
 func TestRoomCodesAreCanonicalisedToUppercase(t *testing.T) {
-	srv := httptest.NewServer(newMux("../frontend"))
+	srv := httptest.NewServer(testMux(t))
 	t.Cleanup(srv.Close)
 
 	client := &http.Client{
@@ -146,7 +164,7 @@ func TestRoomCodesAreCanonicalisedToUppercase(t *testing.T) {
 }
 
 func TestWebsocketRequiresRoomAndName(t *testing.T) {
-	srv := httptest.NewServer(newMux("../frontend"))
+	srv := httptest.NewServer(testMux(t))
 	t.Cleanup(srv.Close)
 
 	cases := []struct {

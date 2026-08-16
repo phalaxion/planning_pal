@@ -66,16 +66,28 @@ func (s roomState) participant(id string) *models.Participant {
 func newTestRoom(t *testing.T) (*Room, *fakeStore) {
 	t.Helper()
 
-	fs := &fakeStore{}
-	var s Store = fs
+	r, fs, _ := newTestRoomInHub(t)
 
-	r := newRoom(&s, t.Name(), defaultDeck)
+	return r, fs
+}
+
+// newTestRoomInHub also returns the hub, for tests that care about the room
+// registering and removing itself. Each test gets its own hub, so nothing is
+// shared between them.
+func newTestRoomInHub(t *testing.T) (*Room, *fakeStore, *Hub) {
+	t.Helper()
+
+	fs := &fakeStore{}
+	h := NewHub(fs)
+	h.deck = defaultDeck
+
+	r := newRoom(h, t.Name())
 	r.facilitatorGrace = 25 * time.Millisecond
 	r.cleanupDelay = 25 * time.Millisecond
 
 	go r.run()
 
-	return r, fs
+	return r, fs, h
 }
 
 // newTestClient builds a client with no websocket connection. Room only ever
@@ -603,18 +615,18 @@ func TestWaitingNoticeClearsWhenTheFacilitatorReturns(t *testing.T) {
 // ── Room lifecycle ──────────────────────────────────────────────────────────
 
 func TestRoomIsRemovedAfterLastParticipantLeaves(t *testing.T) {
-	r, _ := newTestRoom(t)
+	r, _, h := newTestRoomInHub(t)
 
-	GlobalHub.mu.Lock()
-	GlobalHub.rooms[r.ID] = r
-	GlobalHub.mu.Unlock()
+	h.mu.Lock()
+	h.rooms[r.ID] = r
+	h.mu.Unlock()
 
 	alice, _ := join(t, r, "a", "Alice")
 	r.unregister <- alice
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, ok := GlobalHub.Get(r.ID); !ok {
+		if _, ok := h.Get(r.ID); !ok {
 			return
 		}
 		time.Sleep(5 * time.Millisecond)
@@ -624,12 +636,11 @@ func TestRoomIsRemovedAfterLastParticipantLeaves(t *testing.T) {
 }
 
 func TestRejoinCancelsPendingCleanup(t *testing.T) {
-	r, _ := newTestRoom(t)
+	r, _, h := newTestRoomInHub(t)
 
-	GlobalHub.mu.Lock()
-	GlobalHub.rooms[r.ID] = r
-	GlobalHub.mu.Unlock()
-	t.Cleanup(func() { GlobalHub.Delete(r.ID) })
+	h.mu.Lock()
+	h.rooms[r.ID] = r
+	h.mu.Unlock()
 
 	alice, _ := join(t, r, "a", "Alice")
 	r.unregister <- alice
@@ -639,7 +650,7 @@ func TestRejoinCancelsPendingCleanup(t *testing.T) {
 
 	time.Sleep(3 * r.cleanupDelay)
 
-	if _, ok := GlobalHub.Get(r.ID); !ok {
+	if _, ok := h.Get(r.ID); !ok {
 		t.Error("room was torn down despite a participant rejoining before cleanup")
 	}
 }
@@ -838,9 +849,10 @@ func TestHistoryIsLoadedFromStoreOnRoomCreation(t *testing.T) {
 	fs := &fakeStore{history: []models.RoundResult{
 		{ID: "r1", Story: "PP-0", AverageVote: 3, Votes: map[string]string{"Alice": "3"}},
 	}}
-	var s Store = fs
+	h := NewHub(fs)
+	h.deck = defaultDeck
 
-	r := newRoom(&s, t.Name(), defaultDeck)
+	r := newRoom(h, t.Name())
 	r.facilitatorGrace = 25 * time.Millisecond
 	r.cleanupDelay = 25 * time.Millisecond
 	go r.run()
@@ -952,8 +964,9 @@ func TestRoomAsksTheStoreOnlyForTheWindow(t *testing.T) {
 		})
 	}
 
-	var s Store = fs
-	r := newRoom(&s, t.Name(), defaultDeck)
+	h := NewHub(fs)
+	h.deck = defaultDeck
+	r := newRoom(h, t.Name())
 	r.facilitatorGrace = 25 * time.Millisecond
 	r.cleanupDelay = 25 * time.Millisecond
 	go r.run()
