@@ -129,7 +129,7 @@ func (r *Room) run() {
 
 			// if an existing client with same id exists, close its connection (treat as reconnect)
 			if existing, ok := r.participants[c.id]; ok && existing != c {
-				existing.close()
+				existing.shutdown()
 			}
 
 			r.participants[c.id] = c
@@ -150,9 +150,10 @@ func (r *Room) run() {
 			log.Printf("room %s: registered client=%s name=%s (after) count=%d", r.ID, c.id, c.name, len(r.participants))
 
 		case c := <-r.unregister:
-			// If this client was never registered (e.g. rejected for name_taken), just close and skip
+			// If this client was never registered (e.g. rejected for name_taken),
+			// or was already dropped for being unresponsive, just shut it down.
 			if _, ok := r.participants[c.id]; !ok {
-				close(c.send)
+				c.shutdown()
 				continue
 			}
 
@@ -165,7 +166,7 @@ func (r *Room) run() {
 			log.Printf("room %s: unregister client=%s name=%s (before) count=%d", r.ID, c.id, c.name, len(r.participants))
 
 			delete(r.participants, c.id)
-			close(c.send)
+			c.shutdown()
 
 			// If this was the facilitator make a note and start a timer to promote another after a grace period (to allow for quick rejoins without losing facilitator role)
 			if r.facilitatorID == c.id {
@@ -349,13 +350,21 @@ func (r *Room) broadcastStateToAll() {
 
 		b, _ := json.Marshal(models.Message{Type: "state_update", Payload: mustMarshal(payload)})
 
-		select {
-		case recipient.send <- b:
-		default:
-			// if the client's send channel is full, drop it and close
-			close(recipient.send)
+		if !recipient.deliver(b) {
+			r.dropClient(recipient)
 		}
 	}
+}
+
+// dropClient evicts a client the room can no longer deliver to. Removing it
+// from participants here is what makes the eventual unregister harmless: the
+// room sees a client it no longer knows about and simply shuts it down again,
+// rather than tearing the same one down twice.
+func (r *Room) dropClient(c *Client) {
+	log.Printf("room %s: dropping unresponsive client=%s name=%s", r.ID, c.id, c.name)
+
+	delete(r.participants, c.id)
+	c.shutdown()
 }
 
 func mustMarshal(v interface{}) json.RawMessage {

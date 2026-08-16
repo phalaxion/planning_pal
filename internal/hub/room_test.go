@@ -72,6 +72,7 @@ func newTestClient(id, name string) *Client {
 		name:        name,
 		participant: &models.Participant{ID: id, Name: name},
 		send:        make(chan []byte, 32),
+		done:        make(chan struct{}),
 	}
 }
 
@@ -564,4 +565,45 @@ func TestHistoryIsLoadedFromStoreOnRoomCreation(t *testing.T) {
 	if state.History[0].Story != "PP-0" {
 		t.Errorf("history[0].story = %q, want %q", state.History[0].Story, "PP-0")
 	}
+}
+
+func TestSlowClientIsDroppedWithoutPanicking(t *testing.T) {
+	r, _ := newTestRoom(t)
+
+	alice, _ := join(t, r, "a", "Alice")
+	bob, _ := join(t, r, "b", "Bob")
+
+	// Bob stops reading. Fill his buffer so the next broadcast cannot queue.
+	for len(bob.send) < cap(bob.send) {
+		bob.send <- []byte("{}")
+	}
+
+	// This broadcast finds Bob's buffer full and drops him. Its own payload was
+	// built before the drop, so it still lists him.
+	send(r, alice, "set_story", map[string]string{"story": "PP-1"})
+	awaitState(t, alice, func(s roomState) bool { return s.Story == "PP-1" })
+
+	// The next broadcast is the first one built after the drop. Receiving it
+	// also proves the room goroutine got past the drop without dying.
+	send(r, alice, "set_story", map[string]string{"story": "PP-2"})
+	state := awaitState(t, alice, func(s roomState) bool { return s.Story == "PP-2" })
+
+	if state.participant("b") != nil {
+		t.Error("unresponsive client was not removed from the room")
+	}
+
+	select {
+	case <-bob.done:
+	default:
+		t.Error("dropped client was not shut down")
+	}
+
+	// Bob's socket then dies and his readPump unregisters him, as it would in
+	// production once writePump sees the shutdown signal and tears the conn
+	// down. This second teardown must be harmless.
+	r.unregister <- bob
+
+	// The room must still be alive and serving everyone else.
+	send(r, alice, "set_story", map[string]string{"story": "PP-3"})
+	awaitState(t, alice, func(s roomState) bool { return s.Story == "PP-3" })
 }

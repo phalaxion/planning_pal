@@ -3,6 +3,7 @@ package hub
 import (
 	"encoding/json"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,8 +21,14 @@ type Client struct {
 	name        string
 	participant *models.Participant
 	conn        *websocket.Conn
-	send        chan []byte
 	room        *Room
+
+	// send is never closed. The room, the read pump and handleError can all
+	// write to it, and a closed channel would panic whichever of them lost the
+	// race. Shutdown is signalled by closing done instead.
+	send      chan []byte
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 func NewClient(conn *websocket.Conn, name string, id string) *Client {
@@ -35,14 +42,37 @@ func NewClient(conn *websocket.Conn, name string, id string) *Client {
 		participant: p,
 		conn:        conn,
 		send:        make(chan []byte, 32),
+		done:        make(chan struct{}),
 	}
 }
 
-// close releases the client's underlying connection. Clients constructed
-// without a connection (as in tests) are safe to close.
-func (c *Client) close() {
-	if c.conn != nil {
-		c.conn.Close()
+// shutdown stops the client's pumps and releases its connection. It is
+// idempotent and safe to call from any goroutine, including more than once —
+// which matters because a dropped client is also unregistered moments later.
+func (c *Client) shutdown() {
+	c.closeOnce.Do(func() {
+		close(c.done)
+		if c.conn != nil {
+			c.conn.Close()
+		}
+	})
+}
+
+// deliver queues a message without ever blocking. It reports false when the
+// client has shut down or is too far behind to keep up, which the room treats
+// as grounds for dropping it.
+func (c *Client) deliver(msg []byte) bool {
+	select {
+	case <-c.done:
+		return false
+	default:
+	}
+
+	select {
+	case c.send <- msg:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -51,7 +81,7 @@ func (c *Client) readPump() {
 		if c.room != nil {
 			c.room.unregister <- c
 		}
-		c.conn.Close()
+		c.shutdown()
 	}()
 	c.conn.SetReadLimit(512)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -83,12 +113,12 @@ func (c *Client) writePump() {
 	}()
 	for {
 		select {
-		case msg, ok := <-c.send:
+		case <-c.done:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
+			c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+			return
+		case msg := <-c.send:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			w, err := c.conn.NextWriter(websocket.TextMessage)
 			if err != nil {
 				return
@@ -129,7 +159,6 @@ func (c *Client) handleError(code string, message string, fatal bool) {
 		}),
 	})
 
-	go func(client *Client) {
-		client.send <- errMsg
-	}(c)
+	// deliver never blocks, so this is safe to call from the room's goroutine.
+	c.deliver(errMsg)
 }
