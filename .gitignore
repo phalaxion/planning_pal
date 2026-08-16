@@ -1,7 +1,5 @@
+.idea
 bin
-bin/*
-
 data
-data/*
 
 server.log
