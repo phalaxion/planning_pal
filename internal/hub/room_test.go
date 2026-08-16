@@ -161,6 +161,41 @@ func awaitError(t *testing.T, c *Client) string {
 	}
 }
 
+// awaitHistory reads until a history_update arrives and returns its rounds.
+func awaitHistory(t *testing.T, c *Client) []models.RoundResult {
+	t.Helper()
+
+	deadline := time.After(2 * time.Second)
+
+	for {
+		select {
+		case b, ok := <-c.send:
+			if !ok {
+				t.Fatalf("client %s: send channel closed while awaiting history", c.id)
+			}
+
+			var m models.Message
+			if err := json.Unmarshal(b, &m); err != nil {
+				t.Fatalf("client %s: unmarshal message: %v", c.id, err)
+			}
+			if m.Type != "history_update" {
+				continue
+			}
+
+			var payload struct {
+				History []models.RoundResult `json:"history"`
+			}
+			if err := json.Unmarshal(m.Payload, &payload); err != nil {
+				t.Fatalf("client %s: unmarshal history payload: %v", c.id, err)
+			}
+
+			return payload.History
+		case <-deadline:
+			t.Fatalf("client %s: timed out awaiting history_update", c.id)
+		}
+	}
+}
+
 func send(r *Room, c *Client, msgType string, payload interface{}) {
 	r.inbound <- inboundMessage{
 		client: c,
@@ -557,13 +592,89 @@ func TestHistoryIsLoadedFromStoreOnRoomCreation(t *testing.T) {
 	r.cleanupDelay = 25 * time.Millisecond
 	go r.run()
 
-	_, state := join(t, r, "a", "Alice")
+	alice, _ := join(t, r, "a", "Alice")
+	loaded := awaitHistory(t, alice)
 
-	if len(state.History) != 1 {
-		t.Fatalf("history length = %d, want 1", len(state.History))
+	if len(loaded) != 1 {
+		t.Fatalf("history length = %d, want 1", len(loaded))
 	}
-	if state.History[0].Story != "PP-0" {
-		t.Errorf("history[0].story = %q, want %q", state.History[0].Story, "PP-0")
+	if loaded[0].Story != "PP-0" {
+		t.Errorf("history[0].story = %q, want %q", loaded[0].Story, "PP-0")
+	}
+}
+
+func TestStateUpdatesDoNotCarryHistory(t *testing.T) {
+	r, _ := newTestRoom(t)
+
+	alice, _ := join(t, r, "a", "Alice")
+	awaitHistory(t, alice) // the empty history every client gets on join
+
+	send(r, alice, "vote", map[string]string{"card": "5"})
+	send(r, alice, "new_round", map[string]interface{}{"story": "PP-2", "lastRoundAverage": 5.0})
+
+	// The round is now recorded, so history is non-empty...
+	recorded := awaitHistory(t, alice)
+	if len(recorded) != 1 {
+		t.Fatalf("history length = %d, want 1", len(recorded))
+	}
+
+	// ...but a plain vote must not drag it along.
+	send(r, alice, "vote", map[string]string{"card": "8"})
+	state := awaitState(t, alice, func(s roomState) bool { return s.participant("a").Vote == "8" })
+
+	if len(state.History) != 0 {
+		t.Errorf("state_update carried %d history entries, want 0", len(state.History))
+	}
+}
+
+func TestJoiningClientReceivesHistory(t *testing.T) {
+	r, _ := newTestRoom(t)
+
+	alice, _ := join(t, r, "a", "Alice")
+	awaitHistory(t, alice)
+
+	send(r, alice, "set_story", map[string]string{"story": "PP-1"})
+	awaitState(t, alice, func(s roomState) bool { return s.Story == "PP-1" })
+
+	send(r, alice, "vote", map[string]string{"card": "5"})
+	send(r, alice, "new_round", map[string]interface{}{"story": "PP-2", "lastRoundAverage": 5.0})
+	awaitHistory(t, alice)
+
+	// Bob arrives after the round closed and must still see it.
+	bob, _ := join(t, r, "b", "Bob")
+	received := awaitHistory(t, bob)
+
+	if len(received) != 1 {
+		t.Fatalf("late joiner received %d history entries, want 1", len(received))
+	}
+	if received[0].Story != "PP-1" {
+		t.Errorf("history[0].story = %q, want %q", received[0].Story, "PP-1")
+	}
+}
+
+func TestClosingARoundBroadcastsHistoryToEveryone(t *testing.T) {
+	r, _ := newTestRoom(t)
+
+	alice, _ := join(t, r, "a", "Alice")
+	bob, _ := join(t, r, "b", "Bob")
+
+	awaitHistory(t, alice)
+	awaitHistory(t, bob)
+
+	send(r, alice, "set_story", map[string]string{"story": "PP-1"})
+	awaitState(t, alice, func(s roomState) bool { return s.Story == "PP-1" })
+
+	send(r, bob, "vote", map[string]string{"card": "3"})
+	send(r, alice, "new_round", map[string]interface{}{"story": "PP-2", "lastRoundAverage": 3.0})
+
+	// Bob did not close the round, but must still see it appear.
+	received := awaitHistory(t, bob)
+
+	if len(received) != 1 {
+		t.Fatalf("bob received %d history entries, want 1", len(received))
+	}
+	if received[0].Story != "PP-1" {
+		t.Errorf("history[0].story = %q, want %q", received[0].Story, "PP-1")
 	}
 }
 

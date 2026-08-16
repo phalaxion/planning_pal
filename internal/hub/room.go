@@ -146,6 +146,7 @@ func (r *Room) run() {
 			}
 
 			r.broadcastStateToAll()
+			r.sendHistory(c)
 
 			log.Printf("room %s: registered client=%s name=%s (after) count=%d", r.ID, c.id, c.name, len(r.participants))
 
@@ -273,6 +274,7 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 		r.story = payload.Story
 		r.phase = "voting"
 		r.broadcastStateToAll()
+		r.broadcastHistoryToAll()
 	case "set_story":
 		var payload struct {
 			Story string `json:"story"`
@@ -344,7 +346,6 @@ func (r *Room) broadcastStateToAll() {
 			"story":         r.story,
 			"facilitatorId": r.facilitatorID,
 			"participants":  parts,
-			"history":       r.history,
 			"youId":         recipient.id,
 		}
 
@@ -353,6 +354,32 @@ func (r *Room) broadcastStateToAll() {
 		if !recipient.deliver(b) {
 			r.dropClient(recipient)
 		}
+	}
+}
+
+// sendHistory delivers the room's round history to one client. History only
+// changes when a round closes, so it is sent on join and on new_round rather
+// than riding along with every state update — which previously meant
+// re-serialising every round the room had ever seen on every single vote.
+func (r *Room) sendHistory(c *Client) {
+	history := r.history
+	if history == nil {
+		history = []models.RoundResult{}
+	}
+
+	b, _ := json.Marshal(models.Message{
+		Type:    "history_update",
+		Payload: mustMarshal(map[string]interface{}{"history": history}),
+	})
+
+	if !c.deliver(b) {
+		r.dropClient(c)
+	}
+}
+
+func (r *Room) broadcastHistoryToAll() {
+	for _, c := range r.participants {
+		r.sendHistory(c)
 	}
 }
 

@@ -7,6 +7,10 @@ import Connection from "../core/Connection.js";
 	const name = getName();
 	const roomId = getRoom();
 
+	// Round history arrives on its own message rather than with every state
+	// update, so it is held here between renders.
+	let history = [];
+
 	if (!name) {
 		const errorMessage = "A name must be provided to join a room"
 		location.href = `/?error=missing_name&message=${encodeURIComponent(errorMessage)}`
@@ -38,6 +42,10 @@ import Connection from "../core/Connection.js";
 			}
 			else if (msg.type === 'state_update') {
 				renderRoom(payload)
+			}
+			else if (msg.type === 'history_update') {
+				history = Array.isArray(payload.history) ? payload.history : []
+				renderHistory()
 			}
 			else {
 				console.log('Unknown Message', msg);
@@ -90,6 +98,46 @@ import Connection from "../core/Connection.js";
 			qs('#modal-cancel').addEventListener('click', cancel)
 			modal.addEventListener('click', onBackdrop)
 			input.addEventListener('keydown', onKey)
+		})
+	}
+
+	// ── History ────────────────────────────────────────────────────
+	// Driven by history_update, not by renderRoom, so a vote no longer redraws
+	// every round the room has ever played.
+	function renderHistory() {
+		const histEl = qs('#history')
+		if (!histEl) return
+
+		histEl.innerHTML = ''
+
+		if (!history.length) {
+			const empty = document.createElement('div')
+			empty.className = 'no-content'
+			empty.textContent = 'No rounds completed yet.'
+			histEl.appendChild(empty)
+			return
+		}
+
+		history.slice().reverse().forEach(h => {
+			const div = document.createElement('div')
+			div.className = 'history-item'
+
+			const storyLine = document.createElement('div')
+			storyLine.className = 'history-story'
+			storyLine.textContent = h.story || '(no story)'
+			div.appendChild(storyLine)
+
+			const meta = document.createElement('div')
+			meta.className = 'history-meta'
+			meta.textContent = new Date(h.timestamp).toLocaleString()
+			div.appendChild(meta)
+
+			const votes = document.createElement('div')
+			votes.className = 'history-votes'
+			votes.textContent = Object.entries(h.votes || {}).map(([n, v]) => `${n}: ${v}`).join('  ·  ')
+			div.appendChild(votes)
+
+			histEl.appendChild(div)
 		})
 	}
 
@@ -214,8 +262,8 @@ import Connection from "../core/Connection.js";
 		exportBtn.className = 'btn btn-ghost'
 		exportBtn.textContent = '↓ Export CSV'
 		exportBtn.onclick = () => {
-		const rows = [['Story', 'Timestamp', ...(state.history[0] ? Object.keys(state.history[0].votes) : [])]]
-		state.history.forEach(h => rows.push([h.story, new Date(h.timestamp).toLocaleString(), ...Object.values(h.votes || {})]))
+		const rows = [['Story', 'Timestamp', ...(history[0] ? Object.keys(history[0].votes) : [])]]
+		history.forEach(h => rows.push([h.story, new Date(h.timestamp).toLocaleString(), ...Object.values(h.votes || {})]))
 		const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
 		const a = Object.assign(document.createElement('a'), { href: 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv), download: `poker-${roomId}.csv` })
 		a.click()
@@ -320,39 +368,6 @@ import Connection from "../core/Connection.js";
 		resEl.className = 'avg-value hidden-state'
 		resEl.textContent = 'Hidden while voting'
 		consensusBadge.style.visibility = 'hidden';
-		}
-
-		// ── History ────────────────────────────────────────────────
-		const histEl = qs('#history')
-		histEl.innerHTML = ''
-
-		if (state.history && state.history.length) {
-		state.history.slice().reverse().forEach(h => {
-			const div = document.createElement('div')
-			div.className = 'history-item'
-
-			const storyLine = document.createElement('div')
-			storyLine.className = 'history-story'
-			storyLine.textContent = h.story || '(no story)'
-			div.appendChild(storyLine)
-
-			const meta = document.createElement('div')
-			meta.className = 'history-meta'
-			meta.textContent = new Date(h.timestamp).toLocaleString()
-			div.appendChild(meta)
-
-			const votes = document.createElement('div')
-			votes.className = 'history-votes'
-			votes.textContent = Object.entries(h.votes || {}).map(([n, v]) => `${n}: ${v}`).join('  ·  ')
-			div.appendChild(votes)
-
-			histEl.appendChild(div)
-		})
-		} else {
-		const empty = document.createElement('div')
-		empty.className = 'no-content'
-		empty.textContent = 'No rounds completed yet.'
-		histEl.appendChild(empty)
 		}
 
 		// ── Debug ──────────────────────────────────────────────────
