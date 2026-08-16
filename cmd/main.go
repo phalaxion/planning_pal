@@ -18,16 +18,15 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// noCache forces the browser to revalidate before reusing a cached asset.
+// noCache forces the browser to revalidate before reusing a cached page.
 //
 // "no-cache" does not mean "do not store" — the browser still caches, it just
 // has to ask whether its copy is current, which is a cheap 304 when nothing has
-// changed. Without it there is no Cache-Control header at all, and browsers
-// apply heuristic freshness: they will happily reuse a stale room.js for hours.
+// changed.
 //
-// That matters because the JS and the websocket protocol it speaks are deployed
-// together but cached separately. A browser running yesterday's room.js against
-// today's server does not fail loudly; it silently renders the wrong thing.
+// This is applied to the HTML pages, and it is what makes the whole scheme work:
+// a page cannot carry a version in its own URL, so it has to revalidate. Once it
+// does, it hands out asset URLs stamped with the current assetVersion.
 func noCache(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
@@ -35,15 +34,33 @@ func noCache(h http.Handler) http.Handler {
 	})
 }
 
-// assetVersion is stamped into every asset URL in the HTML pages, so a new
-// deploy cannot be served from a cache keyed on the old URL. Bump it by hand to
-// force every client to refetch the frontend.
+// immutableCache lets assets be cached hard, because their URLs are versioned.
 //
-// This is belt and braces: Cache-Control above is what actually guarantees a
-// fresh frontend, and this only matters if something between us and the browser
-// ignores it. A forgotten bump is therefore harmless, which is why one constant
-// is the right amount of machinery here.
-const assetVersion = "1"
+// This is safe only for as long as assetVersion actually changes whenever the
+// frontend does — a stale asset here is cached for a year with no way to
+// self-heal. TestAssetVersionMatchesTheFrontend is the guard: it fails if the
+// frontend changes without a bump.
+func immutableCache(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		h.ServeHTTP(w, r)
+	})
+}
+
+// assetVersion is stamped into every asset URL in the HTML pages.
+//
+// Assets are served immutable and cached for a year, so this is the *only*
+// thing that gets a changed file to a browser. Bump it whenever anything under
+// the frontend directory changes. Forgetting is not harmless: clients would go
+// on running the old JS against a new server, silently, with no self-heal.
+//
+// assetFingerprint records the frontend this version describes.
+// TestAssetVersionMatchesTheFrontend fails when the two drift apart, so the
+// mistake surfaces in the test suite rather than in production.
+const (
+	assetVersion     = "2"
+	assetFingerprint = "d607e39a114dfcd3"
+)
 
 // assetVersionToken is the placeholder the HTML pages carry on every asset URL.
 const assetVersionToken = "__ASSET_VERSION__"
@@ -92,7 +109,7 @@ func newMux(staticPath string, rooms *hub.Hub) *http.ServeMux {
 
 	// Static files
 	fs := http.FileServer(http.Dir(staticPath))
-	mux.Handle("/static/", noCache(http.StripPrefix("/static/", fs)))
+	mux.Handle("/static/", immutableCache(http.StripPrefix("/static/", fs)))
 
 	// Serve lobby for the root path
 	mux.Handle("/", servePage(staticPath, "/lobby/lobby.html"))

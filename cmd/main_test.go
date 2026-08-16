@@ -1,9 +1,15 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -26,38 +32,91 @@ func testMux(t *testing.T) *http.ServeMux {
 	return newMux("../frontend", hub.NewHub(s))
 }
 
-// The frontend and the websocket protocol it speaks are deployed together but
-// cached separately, so a browser reusing an old room.js against a new server
-// misbehaves silently. Every asset must therefore be revalidated, not merely
-// cached with a Last-Modified date and left to heuristic freshness.
-func TestAssetsAreRevalidated(t *testing.T) {
+// Pages cannot carry a version in their own URL, so they have to revalidate —
+// that is what gets a browser the current assetVersion. Assets behind those
+// versioned URLs are cached hard instead.
+func TestPagesRevalidateAndAssetsAreCachedHard(t *testing.T) {
 	srv := httptest.NewServer(testMux(t))
 	t.Cleanup(srv.Close)
 
-	paths := []string{
-		"/",
-		"/room/ABC123",
-		"/admin/ABC123",
-		"/static/room/room.js",
-		"/static/core/Connection.js",
-		"/static/room/room.css",
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"/", "no-cache"},
+		{"/room/ABC123", "no-cache"},
+		{"/admin/ABC123", "no-cache"},
+		{"/static/room/room.js", "public, max-age=31536000, immutable"},
+		{"/static/core/Connection.js", "public, max-age=31536000, immutable"},
+		{"/static/room/room.css", "public, max-age=31536000, immutable"},
 	}
 
-	for _, p := range paths {
-		resp, err := http.Get(srv.URL + p)
+	for _, c := range cases {
+		resp, err := http.Get(srv.URL + c.path)
 		if err != nil {
-			t.Fatalf("GET %s: %v", p, err)
+			t.Fatalf("GET %s: %v", c.path, err)
 		}
 		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			t.Errorf("GET %s: status %d, want 200", p, resp.StatusCode)
+			t.Errorf("GET %s: status %d, want 200", c.path, resp.StatusCode)
 			continue
 		}
 
-		if got := resp.Header.Get("Cache-Control"); got != "no-cache" {
-			t.Errorf("GET %s: Cache-Control = %q, want %q", p, got, "no-cache")
+		if got := resp.Header.Get("Cache-Control"); got != c.want {
+			t.Errorf("GET %s: Cache-Control = %q, want %q", c.path, got, c.want)
 		}
+	}
+}
+
+// frontendFingerprint hashes the content of every frontend file.
+func frontendFingerprint(t *testing.T, dir string) string {
+	t.Helper()
+
+	h := sha256.New()
+
+	// WalkDir visits lexically, so the same tree always hashes the same way.
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+
+		fmt.Fprintf(h, "%s\n", filepath.ToSlash(rel))
+		h.Write(body)
+
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("fingerprint %s: %v", dir, err)
+	}
+
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+// Assets are immutable and cached for a year, so a changed file only reaches a
+// browser if assetVersion changed too. Forgetting is silent in production and
+// unrecoverable for a year, so it fails here instead.
+func TestAssetVersionMatchesTheFrontend(t *testing.T) {
+	got := frontendFingerprint(t, "../frontend")
+
+	if got != assetFingerprint {
+		t.Fatalf(`the frontend changed but assetVersion was not bumped.
+
+Assets are served immutable, so clients will keep the old files until the URL
+changes. In cmd/main.go, bump assetVersion (currently %q) and set:
+
+    assetFingerprint = %q
+`, assetVersion, got)
 	}
 }
 

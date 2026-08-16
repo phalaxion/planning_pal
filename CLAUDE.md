@@ -63,13 +63,18 @@ employee.
   websocket protocol it speaks deploy together but cache separately, so a browser running
   an old `room.js` against a new server fails *silently* — it renders the wrong thing
   rather than erroring.
-  1. Everything is served `Cache-Control: no-cache` — revalidate, not don't-store, so an
-     unchanged file is an empty 304. **This is the load-bearing one.**
-  2. HTML pages carry `?v=` on every asset URL, from the `assetVersion` constant in
-     `cmd/main.go`, substituted into the `__ASSET_VERSION__` placeholder at serve time.
-     Bump it by hand to force a refetch. This only matters if something between the server
-     and the browser ignores the header, so a forgotten bump is harmless — which is why it
-     is one constant and not a content hash.
+  1. **HTML pages** are `Cache-Control: no-cache` — revalidate, not don't-store, so an
+     unchanged page is an empty 304. A page cannot carry a version in its own URL, so this
+     is what gets a browser the current asset URLs. Do not remove it.
+  2. **Assets** are `public, max-age=31536000, immutable`, because their URLs *are*
+     versioned: HTML carries `?v=` from the `assetVersion` constant in `cmd/main.go`,
+     substituted into the `__ASSET_VERSION__` placeholder at serve time.
+  **Bump `assetVersion` whenever anything under `frontend/` changes.** It is no longer
+  belt and braces — it is the only thing that gets a changed file to a browser, and a
+  forgotten bump strands clients on old JS for a year with no self-heal.
+  `TestAssetVersionMatchesTheFrontend` guards this: `assetFingerprint` records the frontend
+  the current version describes, and the test fails with the value to paste in when they
+  drift. Never edit the fingerprint without bumping the version.
   **Every script is referenced from the HTML** so that all of them carry `?v=`. `?v=` does
   not reach ES module imports — an import URL resolves relative to the importing module and
   cannot carry the version — which once left `Connection.js` stale while `room.js` was
