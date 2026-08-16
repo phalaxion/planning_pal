@@ -15,6 +15,11 @@ type inboundMessage struct {
 	msg    models.Message
 }
 
+// defaultGracePeriod is how long the room waits before reassigning a departed
+// facilitator's role, and before tearing itself down once empty. Both exist to
+// let a browser refresh complete without losing state.
+const defaultGracePeriod = 15 * time.Second
+
 type Room struct {
 	ID                 string
 	participants       map[string]*Client
@@ -27,6 +32,11 @@ type Room struct {
 	cleanupTimer       *time.Timer
 	cleanupTimerCh     chan struct{}
 	history            []models.RoundResult
+
+	// Grace periods, held as fields so tests can shorten them. Only read by
+	// run(), and only ever written before run() starts.
+	facilitatorGrace time.Duration
+	cleanupDelay     time.Duration
 
 	register   chan *Client
 	unregister chan *Client
@@ -46,6 +56,8 @@ func newRoom(store *Store, id string) *Room {
 		register:           make(chan *Client),
 		unregister:         make(chan *Client),
 		inbound:            make(chan inboundMessage, 16),
+		facilitatorGrace:   defaultGracePeriod,
+		cleanupDelay:       defaultGracePeriod,
 
 		store: *store,
 	}
@@ -117,7 +129,7 @@ func (r *Room) run() {
 
 			// if an existing client with same id exists, close its connection (treat as reconnect)
 			if existing, ok := r.participants[c.id]; ok && existing != c {
-				existing.conn.Close()
+				existing.close()
 			}
 
 			r.participants[c.id] = c
@@ -165,7 +177,7 @@ func (r *Room) run() {
 
 				log.Printf("room %s: facilitator unregistered, starting reassign counter", r.ID)
 
-				r.facilitatorTimer = time.AfterFunc(15*time.Second, func() {
+				r.facilitatorTimer = time.AfterFunc(r.facilitatorGrace, func() {
 					r.signal(r.facilitatorTimerCh)
 				})
 			}
@@ -178,7 +190,7 @@ func (r *Room) run() {
 
 				log.Printf("room %s: no participants, started cleanup counter", r.ID)
 
-				r.cleanupTimer = time.AfterFunc(15*time.Second, func() {
+				r.cleanupTimer = time.AfterFunc(r.cleanupDelay, func() {
 					r.signal(r.cleanupTimerCh)
 				})
 			}
@@ -193,7 +205,22 @@ func (r *Room) run() {
 	}
 }
 
+// facilitatorOnly lists the message types that mutate shared room state. The
+// frontend hides these controls from non-facilitators, but the socket accepts
+// anything, so the check has to be enforced here to mean anything.
+var facilitatorOnly = map[string]bool{
+	"reveal":    true,
+	"new_round": true,
+	"set_story": true,
+	"promote":   true,
+}
+
 func (r *Room) handleClientMessage(c *Client, m models.Message) {
+	if facilitatorOnly[m.Type] && c.id != r.facilitatorID {
+		c.handleError("not_facilitator", "Only the facilitator can do that.", false)
+		return
+	}
+
 	switch m.Type {
 	case "vote":
 		var payload struct {
@@ -262,6 +289,14 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 		}
 
 		if err := json.Unmarshal(m.Payload, &payload); err != nil {
+			return
+		}
+
+		// Promoting someone who isn't here would leave the room with a
+		// facilitator nobody can reach: the reassign timer only starts on
+		// unregister, so the room would be permanently stuck.
+		if _, ok := r.participants[payload.ID]; !ok {
+			c.handleError("unknown_participant", "That person is no longer in the room.", false)
 			return
 		}
 

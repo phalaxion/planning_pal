@@ -10,6 +10,9 @@ build:
 run:
 	PPAL_STORE_PATH=$(PPAL_STORE_PATH) PPAL_STORE_TYPE=$(PPAL_STORE_TYPE) go run ./cmd
 
+test:
+	go test ./... -race
+
 fmt:
 	gofmt -w .
 

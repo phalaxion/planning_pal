@@ -38,6 +38,14 @@ func NewClient(conn *websocket.Conn, name string, id string) *Client {
 	}
 }
 
+// close releases the client's underlying connection. Clients constructed
+// without a connection (as in tests) are safe to close.
+func (c *Client) close() {
+	if c.conn != nil {
+		c.conn.Close()
+	}
+}
+
 func (c *Client) readPump() {
 	defer func() {
 		if c.room != nil {
