@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"log"
 	"net/http"
@@ -33,10 +34,33 @@ func noCache(h http.Handler) http.Handler {
 	})
 }
 
-// servePage returns a handler that serves a single HTML file, revalidated.
+// assetVersion is stamped into every asset URL in the HTML pages, so a new
+// deploy cannot be served from a cache keyed on the old URL. Bump it by hand to
+// force every client to refetch the frontend.
+//
+// This is belt and braces: Cache-Control above is what actually guarantees a
+// fresh frontend, and this only matters if something between us and the browser
+// ignores it. A forgotten bump is therefore harmless, which is why one constant
+// is the right amount of machinery here.
+const assetVersion = "1"
+
+// assetVersionToken is the placeholder the HTML pages carry on every asset URL.
+const assetVersionToken = "__ASSET_VERSION__"
+
+// servePage serves a single HTML file with the asset version stamped in.
 func servePage(staticPath, page string) http.Handler {
 	return noCache(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, staticPath+page)
+		body, err := os.ReadFile(staticPath + page)
+		if err != nil {
+			log.Printf("serving %s: %v", page, err)
+			http.Error(w, "page not found", http.StatusNotFound)
+			return
+		}
+
+		body = bytes.ReplaceAll(body, []byte(assetVersionToken), []byte(assetVersion))
+
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write(body)
 	}))
 }
 

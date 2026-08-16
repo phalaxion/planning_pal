@@ -47,12 +47,20 @@ employee.
   `sync.Once`-guarded `Client.shutdown()`. `Client.deliver()` is the only send path and
   `Room.dropClient()` the only eviction path; use them rather than touching the channel.
 
-- **Static assets are served `Cache-Control: no-cache`** (`cmd/main.go`). The frontend and
-  the websocket protocol it speaks deploy together but cache separately, so a browser
-  running an old `room.js` against a new server fails *silently* — it renders the wrong
-  thing rather than erroring. `no-cache` means revalidate, not don't-store: unchanged files
-  come back as an empty 304. Do not remove it, and do not add long-lived caching without
-  content-hashed filenames.
+- **Stale frontends are guarded twice, and both halves matter.** The frontend and the
+  websocket protocol it speaks deploy together but cache separately, so a browser running
+  an old `room.js` against a new server fails *silently* — it renders the wrong thing
+  rather than erroring.
+  1. Everything is served `Cache-Control: no-cache` — revalidate, not don't-store, so an
+     unchanged file is an empty 304. **This is the load-bearing one.**
+  2. HTML pages carry `?v=` on every asset URL, from the `assetVersion` constant in
+     `cmd/main.go`, substituted into the `__ASSET_VERSION__` placeholder at serve time.
+     Bump it by hand to force a refetch. This only matters if something between the server
+     and the browser ignores the header, so a forgotten bump is harmless — which is why it
+     is one constant and not a content hash.
+  The `?v=` covers assets referenced from HTML. It does **not** reach ES module imports —
+  `room.js` imports `../core/Connection.js` unversioned, since import URLs resolve relative
+  to the importing module. `no-cache` is what covers those, which is why both halves stay.
 
 ## Gotchas
 
