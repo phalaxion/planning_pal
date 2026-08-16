@@ -58,9 +58,12 @@ employee.
      Bump it by hand to force a refetch. This only matters if something between the server
      and the browser ignores the header, so a forgotten bump is harmless — which is why it
      is one constant and not a content hash.
-  The `?v=` covers assets referenced from HTML. It does **not** reach ES module imports —
-  `room.js` imports `../core/Connection.js` unversioned, since import URLs resolve relative
-  to the importing module. `no-cache` is what covers those, which is why both halves stay.
+  **Every script is referenced from the HTML** so that all of them carry `?v=`. `?v=` does
+  not reach ES module imports — an import URL resolves relative to the importing module and
+  cannot carry the version — which once left `Connection.js` stale while `room.js` was
+  fresh, so a caller was running against a dependency that lacked the method it called.
+  `Connection.js` is therefore a plain global script like `core.js`, not a module. Don't
+  reintroduce `import` between frontend files without solving versioning first.
 
 ## Gotchas
 
@@ -82,6 +85,9 @@ employee.
 - `999` ("this work is too large to quote") is a sentinel that is **deliberately averaged
   as a number**: one such vote alongside three 5s yields 256, and that blow-up is exactly
   how the room notices someone played it. This is intended — do not "correct" it.
+- **Votes can still be changed after a reveal, on purpose.** Revealing starts a discussion
+  phase where people are meant to move their estimate as the conversation changes their
+  mind, so `vote` has no phase guard. This reads like a missing check — it isn't.
 - **A round's average is computed server-side** (`averageVote` in `room.go`) from the real
   votes. It cannot be done in the browser: during the voting phase every other participant's
   vote reads `"hidden"`, so a client closing a round without revealing first would record

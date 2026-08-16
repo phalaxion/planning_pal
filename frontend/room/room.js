@@ -1,5 +1,3 @@
-import Connection from "../core/Connection.js";
-
 (function () {
 	// The deck is deployment configuration, sent by the server before the first
 	// state update. Deliberately not defaulted here — one source of truth beats
@@ -19,6 +17,10 @@ import Connection from "../core/Connection.js";
 		location.href = `/?error=missing_name&message=${encodeURIComponent(errorMessage)}`
 		return;
 	}
+
+	// Name the tab after the room — several rooms open at once is normal, and
+	// they are otherwise indistinguishable.
+	document.title = 'Planning Poker - ' + roomId
 
 	const roomcodeEl = qs('#roomcode')
 	roomcodeEl.textContent = roomId
@@ -41,7 +43,7 @@ import Connection from "../core/Connection.js";
 				location.href = `/?error=${payload.code}&message=${encodeURIComponent(payload.message)}`
 			}
 			else if (msg.type === 'error') {
-				alert(`Error: ${payload.message}`)
+				showStatusError(payload.message)
 			}
 			else if (msg.type === 'state_update') {
 				renderRoom(payload)
@@ -56,15 +58,9 @@ import Connection from "../core/Connection.js";
 			else {
 				console.log('Unknown Message', msg);
 			}
-		}, 
+		},
 		(type, message) => {
-			console.log(type, message);
-			
-			const el = qs('#status');
-			if (!el) return;
-
-			el.innerHTML = `<b>${type}:</b><br>${message}`;
-			el.style.display = message ? 'inline-block' : 'none';
+			showConnectionStatus(type, message, type === 'Disconnected' ? () => ws.retry() : null)
 		}
 	);
 
@@ -293,19 +289,18 @@ import Connection from "../core/Connection.js";
 		const actions = qs('#actions')
 		actions.innerHTML = ''
 
+		// Reveal and New round are the facilitator's to press, so they are only
+		// rendered for them. Export is read-only and everyone gets it.
+		if (isFac) {
 		const revealBtn = document.createElement('button')
 		revealBtn.className = 'btn btn-primary'
 		revealBtn.innerHTML = '⬡ Reveal cards'
-		revealBtn.disabled = !isFac
-		if (!isFac) revealBtn.style.opacity = '0.4'
 		revealBtn.onclick = () => ws.send('reveal')
 		actions.appendChild(revealBtn)
 
 		const newRoundBtn = document.createElement('button')
 		newRoundBtn.className = 'btn btn-secondary'
 		newRoundBtn.innerHTML = '↺ New round'
-		newRoundBtn.disabled = !isFac
-		if (!isFac) newRoundBtn.style.opacity = '0.4'
 			newRoundBtn.onclick = async () => {
 			const story = await showStoryModal()
 			if (story !== null) {
@@ -316,6 +311,7 @@ import Connection from "../core/Connection.js";
 			}
 		}
 		actions.appendChild(newRoundBtn)
+		}
 
 		const exportBtn = document.createElement('button')
 		exportBtn.className = 'btn btn-ghost'
@@ -324,7 +320,7 @@ import Connection from "../core/Connection.js";
 		exportBtn.onclick = exportRecentRounds
 		actions.appendChild(exportBtn)
 
-		actions.style.display = isFac ? 'flex' : 'none';
+		actions.style.display = 'flex';
 
 		// ── Story editing ──────────────────────────────────────────
 		if (storyEl) {
@@ -406,6 +402,7 @@ import Connection from "../core/Connection.js";
 		// ── Results summary ────────────────────────────────────────
 		const resEl = qs('#results-summary');
 		const consensusBadge = qs('#consensus-badge');
+		const spreadEl = qs('#results-spread');
 		if (state.phase === 'revealed') {
 		const nums = state.participants
 			.map(p => p.vote)
@@ -416,12 +413,23 @@ import Connection from "../core/Connection.js";
 		resEl.className = 'avg-value'
 		resEl.textContent = avg !== null ? Math.round(avg * 10) / 10 : '—'
 
+		// The average alone hides disagreement — 1,3,13 and 5,6,6 average about
+		// the same, and only one of them is worth talking about.
+		if (nums.length) {
+			qs('#results-low').textContent = Math.min(...nums)
+			qs('#results-high').textContent = Math.max(...nums)
+			spreadEl.style.display = 'flex'
+		} else {
+			spreadEl.style.display = 'none'
+		}
+
 		const allSame = nums.length > 1 && nums.every(n => n === nums[0])
 		consensusBadge.style.visibility = allSame ? 'visible' : 'hidden';
 		} else {
 		resEl.className = 'avg-value hidden-state'
 		resEl.textContent = 'Hidden while voting'
 		consensusBadge.style.visibility = 'hidden';
+		spreadEl.style.display = 'none';
 		}
 
 		// ── Debug ──────────────────────────────────────────────────

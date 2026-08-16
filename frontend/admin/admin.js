@@ -1,5 +1,3 @@
-import Connection from "../core/Connection.js";
-
 (function () {
 	const clientId = getClientId();
 	const name = getName();
@@ -10,6 +8,8 @@ import Connection from "../core/Connection.js";
 		location.href = `/?error=missing_name&message=${encodeURIComponent(errorMessage)}`
 		return;
 	}
+
+	document.title = 'Planning Poker - ' + roomId + ' (admin)'
 
 	const roomcodeEl = qs('#roomcode')
 	roomcodeEl.textContent = roomId
@@ -35,7 +35,7 @@ import Connection from "../core/Connection.js";
 				location.href = `/?error=${payload.code}&message=${encodeURIComponent(payload.message)}`
 			}
 			else if (msg.type === 'error') {
-				alert(`Error: ${payload.message}`)
+				showStatusError(payload.message)
 			}
 			else if (msg.type === 'state_update') {
 				renderRoom(payload)
@@ -43,15 +43,9 @@ import Connection from "../core/Connection.js";
 			else {
 				console.log('Unknown Message', msg);
 			}
-		}, 
+		},
 		(type, message) => {
-			console.log(type, message);
-			
-			const el = qs('#status');
-			if (!el) return;
-
-			el.innerHTML = `<b>${type}:</b><br>${message}`;
-			el.style.display = message ? 'inline-block' : 'none';
+			showConnectionStatus(type, message, type === 'Disconnected' ? () => ws.retry() : null)
 		}
 	);
 

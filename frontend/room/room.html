@@ -13,6 +13,7 @@
 
 	<link rel="stylesheet" href="/static/core/core.css?v=__ASSET_VERSION__">
 	<script src="/static/core/core.js?v=__ASSET_VERSION__"></script>
+	<script src="/static/core/Connection.js?v=__ASSET_VERSION__"></script>
 
 	<link rel="stylesheet" href="/static/room/room.css?v=__ASSET_VERSION__">
 	<script type="module" src="/static/room/room.js?v=__ASSET_VERSION__" defer></script>
@@ -69,6 +70,16 @@
 			<div>
 				<div class="avg-label">Average</div>
 				<div class="avg-value" id="results-summary">—</div>
+			</div>
+			<div class="results-spread" id="results-spread" style="display:none">
+				<div>
+					<div class="avg-label">Lowest</div>
+					<div class="avg-value spread-value" id="results-low">—</div>
+				</div>
+				<div>
+					<div class="avg-label">Highest</div>
+					<div class="avg-value spread-value" id="results-high">—</div>
+				</div>
 			</div>
 		</div>
 	</div>
