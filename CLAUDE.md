@@ -66,21 +66,21 @@ employee.
   yields an average of 256, and that blow-up is exactly how the room notices someone
   played it. This is intended behaviour — do not "correct" it, and do not backfill the
   `AverageVote` values already stored.
-- SQLite's loose type affinity is currently hiding a schema mismatch — see below.
+- SQLite gave `votes.vote` REAL affinity when it was declared REAL, so numeric card faces
+  are stored as `5.0`, not `"5"`. They read back as `"5"` only because Go formats the float
+  that way. Any future move of that column — or a port to another engine — has to convert
+  via INTEGER, not straight to TEXT, or every numeric vote becomes `"5.0"`.
 
 ## Work queue
 
 Ordered. Done so far: room state-machine tests, server-side facilitator enforcement, the
 `send`-channel lifecycle fix, the `state_update`/`history_update` split, the capped history
-window, and the honest CSV export.
+window, the honest CSV export, and the votes.vote REAL to TEXT migration.
 
-1. **`votes.vote` `REAL` → `TEXT` migration.** The column is declared `REAL`, stores text
-   (`?`, `☕`), and is scanned back as a string. Fine under SQLite, breaks immediately
-   under Postgres or any strict store.
-2. **Deck configurable per deployment** via env var or config file. Currently hardcoded in
+1. **Deck configurable per deployment** via env var or config file. Currently hardcoded in
    `frontend/room/room.js`. Per-room decks are the likely eventual answer, but there's no
    user asking yet.
-3. **Create the store directory on startup.** `make run` fails on a fresh clone: it points
+2. **Create the store directory on startup.** `make run` fails on a fresh clone: it points
    at `./data`, nothing creates it, and `data/` is gitignored. Self-hosters hit this on
    install. `os.MkdirAll` in the store constructors.
 
@@ -99,4 +99,7 @@ tokens, SSO.
 
 - `make fmt` before staging. `make run` for local dev (SQLite, `./data`).
 - Frontend is dependency-free vanilla JS. No build step, no framework — keep it that way.
+- SQLite schema changes are migrations in `applyMigrations`, gated on `PRAGMA user_version`
+  (currently 2). Add a new migration; never edit an existing one — deployed databases have
+  already run it.
 - Never run `git commit`. Stage with `git add` and stop.

@@ -82,6 +82,53 @@ func (s *SQLiteStore) applyMigrations() error {
 		})
 	}
 
+	if currentVersion < 2 {
+		// votes.vote was declared REAL but has always held card faces, including
+		// '?' and '☕'. SQLite's loose affinity stored those as text anyway, so
+		// nothing was ever lost — but the declared type is a lie, and a stricter
+		// engine would reject it outright. SQLite cannot alter a column type, so
+		// the table is rebuilt.
+		migrations = append(migrations, Migration{
+			ID:      "0002_votes_vote_to_text_create",
+			Version: 2,
+			Up: `CREATE TABLE votes_new (
+				id INTEGER NOT NULL PRIMARY KEY,
+				roundid TEXT NOT NULL,
+				name TEXT NOT NULL,
+				vote TEXT NOT NULL
+			);`,
+		})
+
+		// Numeric card faces were coerced to REAL on the way in, so '5' is
+		// sitting there as 5.0. Casting that straight to TEXT would migrate it
+		// to "5.0" and quietly corrupt every numeric vote ever recorded, so
+		// integral values go via INTEGER.
+		migrations = append(migrations, Migration{
+			ID:      "0002_votes_vote_to_text_copy",
+			Version: 2,
+			Up: `INSERT INTO votes_new (id, roundid, name, vote)
+				SELECT id, roundid, name,
+					CASE
+						WHEN typeof(vote) IN ('integer', 'real') AND vote = CAST(vote AS INTEGER)
+							THEN CAST(CAST(vote AS INTEGER) AS TEXT)
+						ELSE CAST(vote AS TEXT)
+					END
+				FROM votes;`,
+		})
+
+		migrations = append(migrations, Migration{
+			ID:      "0002_votes_vote_to_text_drop",
+			Version: 2,
+			Up:      `DROP TABLE votes;`,
+		})
+
+		migrations = append(migrations, Migration{
+			ID:      "0002_votes_vote_to_text_rename",
+			Version: 2,
+			Up:      `ALTER TABLE votes_new RENAME TO votes;`,
+		})
+	}
+
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return err
