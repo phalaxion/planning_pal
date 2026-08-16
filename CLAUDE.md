@@ -26,6 +26,11 @@ SSO layer in front of the whole app, so anyone who can reach a room code is alre
 employee.
 
 - Room passphrases and invite tokens are a someday, not a now.
+- **`promote` is deliberately open to anyone in the room**, unlike `reveal`, `new_round`
+  and `set_story`, which are facilitator-only. The role goes to whoever connects first,
+  which is rarely the person who should run the session — so the admin page is how a scrum
+  master who joined second takes control. Gating it behind the role it grants would make it
+  useless in exactly the case it exists for. It is not an oversight; do not "fix" it.
 - **Seam to protect:** the server currently trusts the self-asserted `name` query param
   (`cmd/main.go`). Adding SSO means preferring a trusted proxy header
   (`X-Forwarded-User` or similar) over that param. Don't build it yet; don't foreclose it.

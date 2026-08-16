@@ -219,14 +219,19 @@ func (r *Room) run() {
 	}
 }
 
-// facilitatorOnly lists the message types that mutate shared room state. The
-// frontend hides these controls from non-facilitators, but the socket accepts
-// anything, so the check has to be enforced here to mean anything.
+// facilitatorOnly lists the message types that drive the round and are therefore
+// restricted to the facilitator. The frontend hides these controls, but the
+// socket accepts anything, so the check has to be enforced here to mean anything.
+//
+// promote is deliberately absent. The role is assigned to whoever connects
+// first, which is rarely the person who should hold it — so anyone in the room
+// can hand it over from the admin page. That is the recovery path for a scrum
+// master who joined second, and gating it behind the role it grants would make
+// it useless in exactly the case it exists for.
 var facilitatorOnly = map[string]bool{
 	"reveal":    true,
 	"new_round": true,
 	"set_story": true,
-	"promote":   true,
 }
 
 func (r *Room) handleClientMessage(c *Client, m models.Message) {

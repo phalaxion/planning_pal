@@ -447,23 +447,42 @@ func TestNonFacilitatorCannotSetStory(t *testing.T) {
 	}
 }
 
-func TestNonFacilitatorCannotPromoteThemselves(t *testing.T) {
+// promote is intentionally not facilitator-gated: the role goes to whoever
+// connected first, so anyone has to be able to hand it to the person who should
+// actually be running the session.
+func TestAnyoneCanPromote(t *testing.T) {
 	r, _ := newTestRoom(t)
 
-	alice, _ := join(t, r, "a", "Alice")
+	join(t, r, "a", "Alice")
 	bob, _ := join(t, r, "b", "Bob")
 
+	// Bob joined second and is not the facilitator, but takes the role anyway.
 	send(r, bob, "promote", map[string]string{"id": "b"})
+	state := awaitState(t, bob, func(s roomState) bool { return s.FacilitatorID == "b" })
 
-	if code := awaitError(t, bob); code != "not_facilitator" {
-		t.Errorf("error code = %q, want %q", code, "not_facilitator")
+	if state.FacilitatorID != "b" {
+		t.Errorf("facilitator = %q, want %q", state.FacilitatorID, "b")
 	}
 
-	send(r, alice, "set_story", map[string]string{"story": "PP-1"})
-	state := awaitState(t, bob, func(s roomState) bool { return s.Story == "PP-1" })
+	// And the role is real, not cosmetic.
+	send(r, bob, "set_story", map[string]string{"story": "PP-1"})
+	state = awaitState(t, bob, func(s roomState) bool { return s.Story == "PP-1" })
 
-	if state.FacilitatorID != "a" {
-		t.Errorf("facilitator = %q, want %q — the takeover succeeded", state.FacilitatorID, "a")
+	if state.Story != "PP-1" {
+		t.Errorf("story = %q, want %q", state.Story, "PP-1")
+	}
+}
+
+func TestPromotingSomeoneWhoIsNotPresentIsStillRejectedForNonFacilitators(t *testing.T) {
+	r, _ := newTestRoom(t)
+
+	join(t, r, "a", "Alice")
+	bob, _ := join(t, r, "b", "Bob")
+
+	send(r, bob, "promote", map[string]string{"id": "ghost"})
+
+	if code := awaitError(t, bob); code != "unknown_participant" {
+		t.Errorf("error code = %q, want %q", code, "unknown_participant")
 	}
 }
 
