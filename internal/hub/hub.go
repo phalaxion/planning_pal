@@ -18,6 +18,12 @@ type Store interface {
 	List(room string, limit int) ([]models.RoundResult, error)
 	Save(room string, result models.RoundResult) error
 	Delete(room string, id string) error
+
+	// ListQueue returns queue items oldest first; an empty status returns all.
+	ListQueue(room string, status string) ([]models.QueueItem, error)
+	SaveQueueItem(room string, item models.QueueItem) error
+	UpdateQueueItem(room string, item models.QueueItem) error
+	DeleteQueueItem(room string, id string) error
 }
 
 // defaultDeck is the deck used when PPAL_DECK is unset. It is the only place

@@ -14,6 +14,7 @@ import (
 type fakeStore struct {
 	history   []models.RoundResult
 	saved     []models.RoundResult
+	queue     []models.QueueItem
 	lastLimit int
 }
 
@@ -36,6 +37,57 @@ func (f *fakeStore) Save(room string, result models.RoundResult) error {
 	return nil
 }
 
+func (f *fakeStore) ListQueue(room string, status string) ([]models.QueueItem, error) {
+	items := []models.QueueItem{}
+
+	for _, item := range f.queue {
+		if status == "" || item.Status == status {
+			items = append(items, item)
+		}
+	}
+
+	return items, nil
+}
+
+func (f *fakeStore) SaveQueueItem(room string, item models.QueueItem) error {
+	f.queue = append(f.queue, item)
+	return nil
+}
+
+func (f *fakeStore) UpdateQueueItem(room string, item models.QueueItem) error {
+	for i := range f.queue {
+		if f.queue[i].ID == item.ID {
+			f.queue[i] = item
+			return nil
+		}
+	}
+
+	return nil
+}
+
+func (f *fakeStore) DeleteQueueItem(room string, id string) error {
+	for i := range f.queue {
+		if f.queue[i].ID == id {
+			f.queue = append(f.queue[:i], f.queue[i+1:]...)
+			return nil
+		}
+	}
+
+	return nil
+}
+
+// queueItem returns a stored item by title, so tests can assert on status
+// without knowing the generated id.
+func (f *fakeStore) queueItem(title string) *models.QueueItem {
+	for i := range f.queue {
+		if f.queue[i].Title == title {
+			return &f.queue[i]
+		}
+	}
+
+	return nil
+}
+
 // roomState mirrors the payload built by broadcastStateToAll.
 type roomState struct {
 	RoomID        string               `json:"roomId"`
@@ -45,6 +97,7 @@ type roomState struct {
 	Participants  []models.Participant `json:"participants"`
 	History       []models.RoundResult `json:"history"`
 	YouID         string               `json:"youId"`
+	StoryNotes    string               `json:"storyNotes"`
 
 	AwaitingFacilitator string `json:"awaitingFacilitator"`
 }

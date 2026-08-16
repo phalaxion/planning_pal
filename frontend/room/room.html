@@ -44,7 +44,13 @@
 					style="padding:6px 12px;font-size:13px;display:none;">Save</button>
 			</span>
 		</div>
+
+		<button id="open-queue" class="btn btn-secondary" title="Things queued up to estimate"
+			style="padding:6px 12px;font-size:13px;white-space:nowrap">☰ Up next</button>
 	</header>
+
+	<!-- Notes for whatever is currently being estimated -->
+	<div id="story-notes" class="story-notes" style="display:none"></div>
 
 	<!-- Participants -->
 	<div class="section-label" style="position:relative;z-index:1;margin-bottom:10px">Participants<span
@@ -96,10 +102,38 @@
 		<div class="history-list" id="history"></div>
 	</div>
 
+	<!-- Queue: capture and manage what is coming up -->
+	<div id="queue-modal"
+		style="display:none;position:fixed;inset:0;z-index:100;background:rgba(26,23,20,0.4);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+		<div class="card" style="width:100%;max-width:520px;margin:24px">
+			<div style="font-family:var(--serif);font-size:22px;margin-bottom:4px">Up next</div>
+			<div class="queue-hint">Anyone can add. Only the facilitator can edit or remove.</div>
+
+			<div class="queue-list" id="queue-list"></div>
+
+			<label class="field-label" for="queue-title">Add an item</label>
+			<div class="input-wrap">
+				<span class="input-icon">✦</span>
+				<input type="text" id="queue-title" placeholder="e.g. ENG-1234 — Add dark mode" autocomplete="off" />
+			</div>
+			<textarea id="queue-notes" class="queue-notes-input" rows="3"
+				placeholder="Notes for the team (optional) — links are clickable"></textarea>
+
+			<div style="display:flex;gap:8px;margin-top:16px">
+				<button id="queue-add" class="btn btn-primary btn-full">Add to queue</button>
+				<button id="queue-close" class="btn btn-secondary">Close</button>
+			</div>
+		</div>
+	</div>
+
 	<div id="story-modal"
 		style="display:none;position:fixed;inset:0;z-index:100;background:rgba(26,23,20,0.4);backdrop-filter:blur(4px);align-items:center;justify-content:center">
 		<div class="card" style="width:100%;max-width:420px;margin:24px">
 			<div id="modal-title" style="font-family:var(--serif);font-size:22px;margin-bottom:16px">New round</div>
+
+			<!-- Queued items, each startable directly -->
+			<div class="queue-picker" id="modal-queue"></div>
+
 			<label class="field-label" for="modal-story-input">Story label</label>
 			<div class="input-wrap">
 				<span class="input-icon">✦</span>

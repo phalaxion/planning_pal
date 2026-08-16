@@ -135,6 +135,31 @@ func (s *SQLiteStore) applyMigrations() error {
 		})
 	}
 
+	if currentVersion < 3 {
+		// The queue outlives the room it belongs to — items are captured during
+		// the day for a session the next morning — so it lives here rather than
+		// in the in-memory Room.
+		migrations = append(migrations, Migration{
+			ID:      "0003_create_queue_items_table",
+			Version: 3,
+			Up: `CREATE TABLE IF NOT EXISTS queue_items (
+				id TEXT NOT NULL PRIMARY KEY,
+				roomid TEXT NOT NULL,
+				title TEXT NOT NULL,
+				notes TEXT NOT NULL,
+				status TEXT NOT NULL,
+				createdat INTEGER NOT NULL
+			);`,
+		})
+
+		// Every read is "the pending items for this room".
+		migrations = append(migrations, Migration{
+			ID:      "0003_index_queue_items_room_status",
+			Version: 3,
+			Up:      `CREATE INDEX IF NOT EXISTS idx_queue_items_room_status ON queue_items(roomid, status);`,
+		})
+	}
+
 	tx, err := s.DB.Begin()
 	if err != nil {
 		return err
@@ -324,4 +349,73 @@ func (s *SQLiteStore) getVotes(roundId string) (map[string]string, error) {
 	}
 
 	return votes, nil
+}
+
+// ── Queue ───────────────────────────────────────────────────────────────────
+
+// ListQueue returns a room's queue items oldest first. An empty status returns
+// every item regardless of state.
+func (s *SQLiteStore) ListQueue(room string, status string) ([]models.QueueItem, error) {
+	query := `SELECT id, title, notes, status, createdat FROM queue_items WHERE roomid = ?`
+	args := []any{room}
+
+	if status != "" {
+		query += ` AND status = ?`
+		args = append(args, status)
+	}
+
+	// createdat is second resolution, so items captured in the same second tie;
+	// rowid breaks it by insertion order.
+	query += ` ORDER BY createdat ASC, rowid ASC`
+
+	rows, err := s.DB.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	items := []models.QueueItem{}
+
+	for rows.Next() {
+		var item models.QueueItem
+		var createdAt int64
+
+		if err := rows.Scan(&item.ID, &item.Title, &item.Notes, &item.Status, &createdAt); err != nil {
+			return nil, err
+		}
+
+		item.CreatedAt = time.Unix(createdAt, 0).UTC()
+		items = append(items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+func (s *SQLiteStore) SaveQueueItem(room string, item models.QueueItem) error {
+	_, err := s.DB.Exec(
+		`INSERT INTO queue_items(id, roomid, title, notes, status, createdat) VALUES(?, ?, ?, ?, ?, ?)`,
+		item.ID, room, item.Title, item.Notes, item.Status, item.CreatedAt.Unix())
+
+	return err
+}
+
+// UpdateQueueItem rewrites an item's title, notes and status. Scoped by room so
+// an id from one room cannot reach into another.
+func (s *SQLiteStore) UpdateQueueItem(room string, item models.QueueItem) error {
+	_, err := s.DB.Exec(
+		`UPDATE queue_items SET title = ?, notes = ?, status = ? WHERE id = ? AND roomid = ?`,
+		item.Title, item.Notes, item.Status, item.ID, room)
+
+	return err
+}
+
+func (s *SQLiteStore) DeleteQueueItem(room string, id string) error {
+	_, err := s.DB.Exec(`DELETE FROM queue_items WHERE id = ? AND roomid = ?`, id, room)
+
+	return err
 }

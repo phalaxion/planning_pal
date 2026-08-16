@@ -85,6 +85,20 @@ employee.
   `?name=`, so a copied one made the recipient join as the sender — `name_taken`, which is
   fatal, and they lost the code. The lobby prefills the room so they enter their own name.
 
+- **The queue is durable per-room state, unlike everything else about a room.** Items are
+  captured during the day for a session the next morning, so they live in SQLite and
+  survive the room being torn down. Only `pending` items load into a room; `done` ones stay
+  as a record and never come back, so a session opens on a clean list.
+- An item is retired **only when a round is actually recorded for it** — start something,
+  discuss it, move on without voting and it stays pending. `Room.activeItemID` tracks which
+  item backs the current story; a hand-typed story leaves it empty and retires nothing.
+- The active item is filtered out of `queue_update`: it isn't *next*, it's *now*. That is
+  also why an abandoned item reappears — nothing changed its status, it just stopped being
+  active.
+- **Notes are user text rendered to the whole room.** `appendLinkified` builds `<a>` nodes
+  and never assembles HTML; using `innerHTML` there would be stored XSS delivered to
+  everyone who opens the room. Only `http(s)` is matched, so no `javascript:` href.
+
 ## Gotchas
 
 - `broadcastStateToAll` rebuilds and re-serializes the payload once per recipient, because

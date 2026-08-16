@@ -12,6 +12,12 @@
 	// update, so it is held here between renders.
 	let history = [];
 
+	// Pending queue items, from queue_update. The item being voted on is not in
+	// here — the server leaves it out, because it isn't "next", it's now.
+	let queue = [];
+	let editingId = null;
+	let isFacilitator = false;
+
 	if (!name) {
 		const errorMessage = "A name must be provided to join a room"
 		location.href = `/?error=missing_name&message=${encodeURIComponent(errorMessage)}`
@@ -51,6 +57,10 @@
 			else if (msg.type === 'config') {
 				deck = Array.isArray(payload.deck) ? payload.deck : []
 			}
+			else if (msg.type === 'queue_update') {
+				queue = Array.isArray(payload.queue) ? payload.queue : []
+				renderQueue()
+			}
 			else if (msg.type === 'history_update') {
 				history = Array.isArray(payload.history) ? payload.history : []
 				renderHistory()
@@ -67,10 +77,21 @@
 	let __storyPrompted = false;
 	let __firstRender = true;
 
+	// showStoryModal asks what to estimate next. It resolves with {itemId} when a
+	// queued item is started, {story} when one is typed, or null on cancel.
 	function showStoryModal(defaultVal = '', title = 'New round', confirmLabel = 'Start round →') {
 		return new Promise(resolve => {
 			const modal = qs('#story-modal')
 			const input = qs('#modal-story-input')
+
+			// The queued items, each startable directly.
+			const picker = qs('#modal-queue')
+			picker.innerHTML = ''
+			queue.forEach(item => {
+				picker.appendChild(queueRow(item, [
+					{ label: 'Start →', primary: true, onClick: i => { cleanup(); modal.style.display = 'none'; resolve({ itemId: i.id }) } }
+				]))
+			})
 
 			// The same modal asks two different questions — "what are we
 			// estimating next" and "this room has no story yet" — so it says
@@ -85,7 +106,7 @@
 
 			function confirm() {
 				modal.style.display = 'none'
-				resolve(input.value.trim())
+				resolve({ story: input.value.trim() })
 				cleanup()
 			}
 			function cancel() {
@@ -111,6 +132,173 @@
 			input.addEventListener('keydown', onKey)
 		})
 	}
+
+	// ── Queue ──────────────────────────────────────────────────────
+	// appendLinkified writes text into an element, turning URLs into real links.
+	//
+	// Nodes are built rather than an HTML string assembled. Notes are typed by
+	// one person and rendered by everyone in the room, so innerHTML here would
+	// be a stored XSS delivered to the whole team. Only http(s) is matched, so
+	// no javascript: URL can reach an href.
+	function appendLinkified(el, text) {
+		const pattern = /https?:\/\/[^\s<>"')]+/g
+		let last = 0
+		let match
+
+		while ((match = pattern.exec(text)) !== null) {
+			if (match.index > last) {
+				el.appendChild(document.createTextNode(text.slice(last, match.index)))
+			}
+
+			const a = document.createElement('a')
+			a.href = match[0]
+			a.target = '_blank'
+			a.rel = 'noopener noreferrer'
+			a.textContent = match[0]
+			el.appendChild(a)
+
+			last = match.index + match[0].length
+		}
+
+		if (last < text.length) {
+			el.appendChild(document.createTextNode(text.slice(last)))
+		}
+	}
+
+	function renderStoryNotes(notes) {
+		const el = qs('#story-notes')
+		if (!el) return
+
+		el.innerHTML = ''
+
+		if (!notes) {
+			el.style.display = 'none'
+			return
+		}
+
+		appendLinkified(el, notes)
+		el.style.display = 'block'
+	}
+
+	function queueRow(item, opts) {
+		const row = document.createElement('div')
+		row.className = 'queue-row'
+
+		const main = document.createElement('div')
+		main.className = 'queue-row-main'
+
+		const title = document.createElement('div')
+		title.className = 'queue-row-title'
+		title.textContent = item.title
+		main.appendChild(title)
+
+		if (item.notes) {
+			const notes = document.createElement('div')
+			notes.className = 'queue-row-notes'
+			appendLinkified(notes, item.notes)
+			main.appendChild(notes)
+		}
+
+		row.appendChild(main)
+
+		const actions = document.createElement('div')
+		actions.className = 'queue-row-actions'
+
+		opts.forEach(action => {
+			const btn = document.createElement('button')
+			btn.className = action.primary ? 'btn btn-primary' : 'btn btn-ghost'
+			btn.textContent = action.label
+			btn.onclick = () => action.onClick(item)
+			actions.appendChild(btn)
+		})
+
+		row.appendChild(actions)
+
+		return row
+	}
+
+	// renderQueue draws the management list inside the queue modal.
+	function renderQueue() {
+		const list = qs('#queue-list')
+		if (!list) return
+
+		list.innerHTML = ''
+
+		if (!queue.length) {
+			const empty = document.createElement('div')
+			empty.className = 'queue-empty'
+			empty.textContent = 'Nothing queued yet. Add things during the day and they will be here in the morning.'
+			list.appendChild(empty)
+			return
+		}
+
+		queue.forEach(item => {
+			// Anyone can add; only the facilitator can change or remove what is
+			// already there.
+			const actions = isFacilitator ? [
+				{ label: 'Edit', onClick: beginEdit },
+				{ label: 'Remove', onClick: i => ws.send('queue_remove', { id: i.id }) }
+			] : []
+
+			list.appendChild(queueRow(item, actions))
+		})
+	}
+
+	function beginEdit(item) {
+		editingId = item.id
+		qs('#queue-title').value = item.title
+		qs('#queue-notes').value = item.notes || ''
+		qs('#queue-add').textContent = 'Save changes'
+		qs('#queue-title').focus()
+	}
+
+	function resetQueueForm() {
+		editingId = null
+		qs('#queue-title').value = ''
+		qs('#queue-notes').value = ''
+		qs('#queue-add').textContent = 'Add to queue'
+	}
+
+	function submitQueueForm() {
+		const title = qs('#queue-title').value.trim()
+		const notes = qs('#queue-notes').value.trim()
+
+		if (!title) {
+			qs('#queue-title').focus()
+			return
+		}
+
+		if (editingId) {
+			ws.send('queue_edit', { id: editingId, title, notes })
+		} else {
+			ws.send('queue_add', { title, notes })
+		}
+
+		resetQueueForm()
+	}
+
+	function openQueueModal() {
+		renderQueue()
+		resetQueueForm()
+		qs('#queue-modal').style.display = 'flex'
+		qs('#queue-title').focus()
+	}
+
+	function closeQueueModal() {
+		resetQueueForm()
+		qs('#queue-modal').style.display = 'none'
+	}
+
+	qs('#open-queue').addEventListener('click', openQueueModal)
+	qs('#queue-close').addEventListener('click', closeQueueModal)
+	qs('#queue-add').addEventListener('click', submitQueueForm)
+	qs('#queue-modal').addEventListener('click', e => {
+		if (e.target === qs('#queue-modal')) closeQueueModal()
+	})
+	qs('#queue-title').addEventListener('keydown', e => {
+		if (e.key === 'Enter') { e.preventDefault(); submitQueueForm() }
+		if (e.key === 'Escape') { e.preventDefault(); closeQueueModal() }
+	})
 
 	// formatAverage renders a stored round average for display.
 	//
@@ -213,6 +401,15 @@
 		const youId = state.youId
 		const isFac = state.facilitatorId && youId && state.facilitatorId === youId
 
+		// The queue modal renders edit/remove based on this, and it is drawn from
+		// its own message, so keep it current here rather than passing state down.
+		if (isFacilitator !== !!isFac) {
+			isFacilitator = !!isFac
+			renderQueue()
+		}
+
+		renderStoryNotes(state.storyNotes)
+
 		// Prompt for a story only when arriving into an empty room. Inheriting
 		// the role later — a handover, or the grace period expiring — used to
 		// throw this modal over someone who was quietly participating; they can
@@ -220,8 +417,16 @@
 		if (__firstRender && isFac && !state.story && !__storyPrompted) {
 			__storyPrompted = true
 			setTimeout(async () => {
-				const story = await showStoryModal('', 'Set the story', 'Set story →')
-				if (story) ws.send('set_story', { story })
+				const choice = await showStoryModal('', 'Set the story', 'Set story →')
+				if (!choice) return
+
+				// Picking a queued item has to go through new_round so the server
+				// knows which item backs the story; typing one does not.
+				if (choice.itemId) {
+					ws.send('new_round', { itemId: choice.itemId })
+				} else if (choice.story) {
+					ws.send('set_story', { story: choice.story })
+				}
 			}, 300)
 		}
 		__firstRender = false
@@ -336,12 +541,12 @@
 		newRoundBtn.className = 'btn btn-secondary'
 		newRoundBtn.innerHTML = '↺ New round'
 			newRoundBtn.onclick = async () => {
-			const story = await showStoryModal()
-			if (story !== null) {
+			const choice = await showStoryModal()
+			if (choice !== null) {
 				// The server computes the round's average from the real votes. It
 				// cannot be done here: during voting everyone else's vote reads
 				// "hidden", so this client can only see its own.
-				ws.send('new_round', { story })
+				ws.send('new_round', choice.itemId ? { itemId: choice.itemId } : { story: choice.story })
 			}
 		}
 		actions.appendChild(newRoundBtn)

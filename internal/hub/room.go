@@ -47,6 +47,16 @@ type Room struct {
 	// just tells clients which ones to offer.
 	deck []string
 
+	// queue holds only the pending items. Done ones stay in the store as a
+	// record and are never loaded again, so a session starts on a clean list.
+	queue []models.QueueItem
+
+	// activeItemID is the queue item the current story came from, if any. It is
+	// what gets marked done when a round is actually recorded; a story typed by
+	// hand leaves it empty.
+	activeItemID string
+	storyNotes   string
+
 	// Grace periods, held as fields so tests can shorten them. Only read by
 	// run(), and only ever written before run() starts.
 	facilitatorGrace time.Duration
@@ -87,6 +97,14 @@ func newRoom(h *Hub, id string) *Room {
 		log.Printf("room %s: failed to load history error: %v", id, err)
 	} else {
 		r.history = history
+	}
+
+	queue, err := r.store.ListQueue(r.ID, models.QueuePending)
+
+	if err != nil {
+		log.Printf("room %s: failed to load queue: %v", id, err)
+	} else {
+		r.queue = queue
 	}
 
 	return r
@@ -172,6 +190,7 @@ func (r *Room) run() {
 			r.sendConfig(c)
 			r.broadcastStateToAll()
 			r.sendHistory(c)
+			r.sendQueue(c)
 
 			log.Printf("room %s: registered client=%s name=%s (after) count=%d", r.ID, c.id, c.name, len(r.participants))
 
@@ -242,10 +261,41 @@ func (r *Room) run() {
 // can hand it over from the admin page. That is the recovery path for a scrum
 // master who joined second, and gating it behind the role it grants would make
 // it useless in exactly the case it exists for.
+// queue_add is absent for the same reason as promote: the list is built during
+// the day by whoever scoped the work, long before anyone is "the facilitator".
+// Editing and removing are restricted, so one person cannot quietly delete
+// another's item.
 var facilitatorOnly = map[string]bool{
-	"reveal":    true,
-	"new_round": true,
-	"set_story": true,
+	"reveal":       true,
+	"new_round":    true,
+	"set_story":    true,
+	"queue_edit":   true,
+	"queue_remove": true,
+}
+
+// Bounds on stored, broadcast text. Rejected rather than truncated: silently
+// storing half of what someone typed is worse than telling them.
+const (
+	maxTitleLength = 200
+	maxNotesLength = 2000
+)
+
+// validateItemText rejects empty or oversized queue text, returning a message
+// suitable for showing to the person who typed it.
+func validateItemText(title, notes string) (string, string, error) {
+	title = strings.TrimSpace(title)
+	notes = strings.TrimSpace(notes)
+
+	switch {
+	case title == "":
+		return "", "", fmt.Errorf("An item needs a title.")
+	case len([]rune(title)) > maxTitleLength:
+		return "", "", fmt.Errorf("Titles are limited to %d characters.", maxTitleLength)
+	case len([]rune(notes)) > maxNotesLength:
+		return "", "", fmt.Errorf("Notes are limited to %d characters.", maxNotesLength)
+	}
+
+	return title, notes, nil
 }
 
 func (r *Room) handleClientMessage(c *Client, m models.Message) {
@@ -275,13 +325,31 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 		r.broadcastStateToAll()
 	case "new_round":
 		var payload struct {
-			Story string `json:"story"`
+			Story  string `json:"story"`
+			ItemID string `json:"itemId"`
 		}
 
 		if err := json.Unmarshal(m.Payload, &payload); err != nil {
 			log.Printf("invalid new_round payload: %v", err)
 			c.handleError("invalid_new_round", "Invalid new_round payload provided", false)
 			return
+		}
+
+		// Resolve the next story before closing the current one, so a bad item
+		// id doesn't leave the round half-advanced.
+		nextStory, nextNotes := strings.TrimSpace(payload.Story), ""
+		nextItemID := ""
+
+		if payload.ItemID != "" {
+			idx := r.queueIndex(payload.ItemID)
+			if idx < 0 {
+				c.handleError("unknown_queue_item", "That item is no longer in the queue.", false)
+				return
+			}
+
+			nextStory = r.queue[idx].Title
+			nextNotes = r.queue[idx].Notes
+			nextItemID = r.queue[idx].ID
 		}
 
 		votes := make(map[string]string)
@@ -327,13 +395,127 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 			}
 		}
 
-		r.story = payload.Story
+		// The item is retired only if the round it backed was actually recorded.
+		// Pulling something up, talking about it and moving on without voting
+		// leaves it pending, so it comes back rather than vanishing silently.
+		if recorded && r.activeItemID != "" {
+			if idx := r.queueIndex(r.activeItemID); idx >= 0 {
+				done := r.queue[idx]
+				done.Status = models.QueueDone
+
+				if err := r.store.UpdateQueueItem(r.ID, done); err != nil {
+					log.Printf("room %s: failed to mark queue item done: %v", r.ID, err)
+				}
+
+				r.queue = append(r.queue[:idx], r.queue[idx+1:]...)
+			}
+		}
+
+		r.story = nextStory
+		r.storyNotes = nextNotes
+		r.activeItemID = nextItemID
 		r.phase = "voting"
 		r.broadcastStateToAll()
 
 		if recorded {
 			r.broadcastHistoryToAll()
 		}
+
+		// Always: which item is active changed, and the active one is hidden
+		// from the list.
+		r.broadcastQueueToAll()
+	case "queue_add":
+		var payload struct {
+			Title string `json:"title"`
+			Notes string `json:"notes"`
+		}
+
+		if err := json.Unmarshal(m.Payload, &payload); err != nil {
+			c.handleError("invalid_queue_item", "Invalid queue item provided", false)
+			return
+		}
+
+		title, notes, err := validateItemText(payload.Title, payload.Notes)
+		if err != nil {
+			c.handleError("invalid_queue_item", err.Error(), false)
+			return
+		}
+
+		item := models.QueueItem{
+			ID:        guid.New().String(),
+			Title:     title,
+			Notes:     notes,
+			Status:    models.QueuePending,
+			CreatedAt: time.Now().UTC(),
+		}
+
+		if err := r.store.SaveQueueItem(r.ID, item); err != nil {
+			log.Printf("room %s: failed to save queue item: %v", r.ID, err)
+			c.handleError("queue_failed", "Could not save that item.", false)
+			return
+		}
+
+		r.queue = append(r.queue, item)
+		r.broadcastQueueToAll()
+	case "queue_edit":
+		var payload struct {
+			ID    string `json:"id"`
+			Title string `json:"title"`
+			Notes string `json:"notes"`
+		}
+
+		if err := json.Unmarshal(m.Payload, &payload); err != nil {
+			c.handleError("invalid_queue_item", "Invalid queue item provided", false)
+			return
+		}
+
+		title, notes, err := validateItemText(payload.Title, payload.Notes)
+		if err != nil {
+			c.handleError("invalid_queue_item", err.Error(), false)
+			return
+		}
+
+		idx := r.queueIndex(payload.ID)
+		if idx < 0 {
+			c.handleError("unknown_queue_item", "That item is no longer in the queue.", false)
+			return
+		}
+
+		item := r.queue[idx]
+		item.Title = title
+		item.Notes = notes
+
+		if err := r.store.UpdateQueueItem(r.ID, item); err != nil {
+			log.Printf("room %s: failed to update queue item: %v", r.ID, err)
+			c.handleError("queue_failed", "Could not save that change.", false)
+			return
+		}
+
+		r.queue[idx] = item
+		r.broadcastQueueToAll()
+	case "queue_remove":
+		var payload struct {
+			ID string `json:"id"`
+		}
+
+		if err := json.Unmarshal(m.Payload, &payload); err != nil {
+			return
+		}
+
+		idx := r.queueIndex(payload.ID)
+		if idx < 0 {
+			c.handleError("unknown_queue_item", "That item is no longer in the queue.", false)
+			return
+		}
+
+		if err := r.store.DeleteQueueItem(r.ID, payload.ID); err != nil {
+			log.Printf("room %s: failed to delete queue item: %v", r.ID, err)
+			c.handleError("queue_failed", "Could not remove that item.", false)
+			return
+		}
+
+		r.queue = append(r.queue[:idx], r.queue[idx+1:]...)
+		r.broadcastQueueToAll()
 	case "set_story":
 		var payload struct {
 			Story string `json:"story"`
@@ -343,7 +525,11 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 			return
 		}
 
+		// A hand-typed story is no longer backed by a queue item, so it carries
+		// no notes and retires nothing when the round closes.
 		r.story = payload.Story
+		r.storyNotes = ""
+		r.activeItemID = ""
 		r.broadcastStateToAll()
 	case "promote":
 		var payload struct {
@@ -426,6 +612,7 @@ func (r *Room) broadcastStateToAll() {
 			"roomId":              r.ID,
 			"phase":               r.phase,
 			"story":               r.story,
+			"storyNotes":          r.storyNotes,
 			"facilitatorId":       r.facilitatorID,
 			"participants":        parts,
 			"youId":               recipient.id,
@@ -453,6 +640,49 @@ func (r *Room) awaitingFacilitator() string {
 	}
 
 	return ""
+}
+
+// queueIndex finds a pending item by id, or -1. Items already retired are not
+// in the slice, so a stale id from a client that has not caught up reads as
+// "not there" rather than matching the wrong thing.
+func (r *Room) queueIndex(id string) int {
+	for i := range r.queue {
+		if r.queue[i].ID == id {
+			return i
+		}
+	}
+
+	return -1
+}
+
+// sendQueue delivers the pending queue to one client. Like history, it changes
+// far less often than room state, so it travels on its own message rather than
+// riding along with every vote.
+func (r *Room) sendQueue(c *Client) {
+	// The item being voted on is not "up next" — it's now. It stays pending in
+	// the store, so if the round is abandoned without a vote it reappears here
+	// as soon as something else becomes active.
+	queue := make([]models.QueueItem, 0, len(r.queue))
+	for _, item := range r.queue {
+		if item.ID != r.activeItemID {
+			queue = append(queue, item)
+		}
+	}
+
+	b, _ := json.Marshal(models.Message{
+		Type:    "queue_update",
+		Payload: mustMarshal(map[string]interface{}{"queue": queue}),
+	})
+
+	if !c.deliver(b) {
+		r.dropClient(c)
+	}
+}
+
+func (r *Room) broadcastQueueToAll() {
+	for _, c := range r.participants {
+		r.sendQueue(c)
+	}
 }
 
 // sendConfig tells one client which deck to render. Sent before that client's
