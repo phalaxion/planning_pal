@@ -107,6 +107,18 @@ import Connection from "../core/Connection.js";
 		})
 	}
 
+	// formatAverage renders a stored round average for display.
+	//
+	// A round records the average the room computed at the time, and stores 0
+	// when no numeric votes were cast — everyone played '?' or '☕'. Since no
+	// default card face is 0, a zero is read as "no average" rather than shown
+	// as an average of zero.
+	function formatAverage(value) {
+		const n = Number(value)
+		if (!isFinite(n) || n === 0) return '—'
+		return String(Math.round(n * 10) / 10)
+	}
+
 	// ── History ────────────────────────────────────────────────────
 	// Driven by history_update, not by renderRoom, so a vote no longer redraws
 	// every round the room has ever played.
@@ -128,10 +140,22 @@ import Connection from "../core/Connection.js";
 			const div = document.createElement('div')
 			div.className = 'history-item'
 
+			const head = document.createElement('div')
+			head.className = 'history-head'
+
 			const storyLine = document.createElement('div')
 			storyLine.className = 'history-story'
 			storyLine.textContent = h.story || '(no story)'
-			div.appendChild(storyLine)
+			head.appendChild(storyLine)
+
+			const avg = formatAverage(h.average_vote)
+			const avgEl = document.createElement('div')
+			avgEl.className = 'history-average' + (avg === '—' ? ' is-empty' : '')
+			avgEl.textContent = avg
+			avgEl.title = 'Average of the numeric votes in this round'
+			head.appendChild(avgEl)
+
+			div.appendChild(head)
 
 			const meta = document.createElement('div')
 			meta.className = 'history-meta'
@@ -285,14 +309,10 @@ import Connection from "../core/Connection.js";
 			newRoundBtn.onclick = async () => {
 			const story = await showStoryModal()
 			if (story !== null) {
-				const nums = state.participants
-				.map(p => p.vote)
-				.filter(v => v)
-				.map(v => Number(v))
-				.filter(n => isFinite(n))
-				const lastRoundAverage = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0
-
-				ws.send('new_round', { story, lastRoundAverage })
+				// The server computes the round's average from the real votes. It
+				// cannot be done here: during voting everyone else's vote reads
+				// "hidden", so this client can only see its own.
+				ws.send('new_round', { story })
 			}
 		}
 		actions.appendChild(newRoundBtn)

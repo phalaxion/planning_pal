@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/beevik/guid"
@@ -255,8 +256,7 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 		r.broadcastStateToAll()
 	case "new_round":
 		var payload struct {
-			LastRoundAverage float64 `json:"lastRoundAverage"`
-			Story            string  `json:"story"`
+			Story string `json:"story"`
 		}
 
 		if err := json.Unmarshal(m.Payload, &payload); err != nil {
@@ -273,7 +273,18 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 			}
 		}
 
-		result := models.RoundResult{ID: guid.New().String(), Story: r.story, AverageVote: payload.LastRoundAverage, Votes: votes, Timestamp: time.Now().UTC()}
+		// The average is computed here, not taken from payload.LastRoundAverage.
+		// The client can only average what it can see, and during the voting
+		// phase everyone else's vote reads "hidden" — so a round closed without
+		// revealing first would record the facilitator's own vote as the
+		// average. The room is the only place the real votes exist.
+		result := models.RoundResult{
+			ID:          guid.New().String(),
+			Story:       r.story,
+			AverageVote: averageVote(votes),
+			Votes:       votes,
+			Timestamp:   time.Now().UTC(),
+		}
 
 		if err := r.store.Save(r.ID, result); err != nil {
 			log.Printf("room %s - failed to save round result: %v", r.ID, err)
@@ -325,6 +336,29 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 		r.facilitatorID = payload.ID
 		r.broadcastStateToAll()
 	}
+}
+
+// averageVote averages the numeric card faces in a round, ignoring the rest.
+//
+// Parsing rather than matching known faces keeps this working for any deck a
+// deployment configures. Note that 999 parses, and is meant to: it is the "too
+// large to quote" card, and wrecking the average is how the room notices
+// someone played it. Returns 0 when nothing numeric was cast.
+func averageVote(votes map[string]string) float64 {
+	sum, count := 0.0, 0
+
+	for _, vote := range votes {
+		if n, err := strconv.ParseFloat(vote, 64); err == nil {
+			sum += n
+			count++
+		}
+	}
+
+	if count == 0 {
+		return 0
+	}
+
+	return sum / float64(count)
 }
 
 func (r *Room) getParticipantByID(id string) *models.Participant {

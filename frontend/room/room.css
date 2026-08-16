@@ -338,10 +338,29 @@ body {
     gap: 4px;
 }
 
+.history-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
 .history-story {
     font-size: 14px;
     font-weight: 600;
     color: var(--ink);
+}
+
+.history-average {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--accent);
+    white-space: nowrap;
+}
+
+.history-average.is-empty {
+    color: var(--ink-faint);
 }
 
 .history-meta {

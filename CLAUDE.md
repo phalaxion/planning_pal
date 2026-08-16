@@ -81,8 +81,14 @@ employee.
   anything non-numeric, so it works for any deck without knowing the faces.
 - `999` ("this work is too large to quote") is a sentinel that is **deliberately averaged
   as a number**: one such vote alongside three 5s yields 256, and that blow-up is exactly
-  how the room notices someone played it. This is intended — do not "correct" it, and do
-  not backfill the `AverageVote` values already stored.
+  how the room notices someone played it. This is intended — do not "correct" it.
+- **A round's average is computed server-side** (`averageVote` in `room.go`) from the real
+  votes. It cannot be done in the browser: during the voting phase every other participant's
+  vote reads `"hidden"`, so a client closing a round without revealing first would record
+  only its own vote as the average. `AverageVote` values stored before this was fixed are
+  wrong for any round closed without a reveal, and are not backfilled.
+- A stored `AverageVote` of 0 means no numeric votes were cast, not an average of zero —
+  the UI shows it as `—`. A deck containing a literal `0` face would blur that distinction.
 - SQLite gave `votes.vote` REAL affinity when it was declared REAL, so numeric card faces
   are stored as `5.0`, not `"5"`. They read back as `"5"` only because Go formats the float
   that way. Any future move of that column — or a port to another engine — has to convert

@@ -601,8 +601,7 @@ func TestNewRoundPersistsResultAndClearsVotes(t *testing.T) {
 	awaitState(t, alice, func(s roomState) bool { return s.participant("b").Voted })
 
 	send(r, alice, "new_round", map[string]interface{}{
-		"story":            "PP-2",
-		"lastRoundAverage": 6.5,
+		"story": "PP-2",
 	})
 
 	state := awaitState(t, alice, func(s roomState) bool { return s.Story == "PP-2" })
@@ -629,6 +628,78 @@ func TestNewRoundPersistsResultAndClearsVotes(t *testing.T) {
 	}
 	if len(saved.Votes) != 2 {
 		t.Errorf("saved %d votes, want 2: %+v", len(saved.Votes), saved.Votes)
+	}
+}
+
+func TestAverageVote(t *testing.T) {
+	cases := []struct {
+		name  string
+		votes map[string]string
+		want  float64
+	}{
+		{"no votes", map[string]string{}, 0},
+		{"single vote", map[string]string{"a": "5"}, 5},
+		{"fractional average", map[string]string{"a": "5", "b": "8"}, 6.5},
+		{"non-numeric faces ignored", map[string]string{"a": "5", "b": "?", "c": "☕"}, 5},
+		{"all non-numeric", map[string]string{"a": "?", "b": "☕"}, 0},
+		// 999 is the "too large to quote" card and is meant to wreck the average.
+		{"999 is counted", map[string]string{"a": "5", "b": "999"}, 502},
+		{"t-shirt deck has no average", map[string]string{"a": "M", "b": "L"}, 0},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := averageVote(c.votes); got != c.want {
+				t.Errorf("averageVote(%v) = %v, want %v", c.votes, got, c.want)
+			}
+		})
+	}
+}
+
+// The client can only average what it can see, and during voting everyone
+// else's vote is masked. Closing a round without revealing first must still
+// record the true average.
+func TestRoundAverageIsComputedFromRealVotesWithoutRevealing(t *testing.T) {
+	r, fs := newTestRoom(t)
+
+	alice, _ := join(t, r, "a", "Alice")
+	bob, _ := join(t, r, "b", "Bob")
+
+	send(r, alice, "vote", map[string]string{"card": "5"})
+	send(r, bob, "vote", map[string]string{"card": "8"})
+	awaitState(t, alice, func(s roomState) bool { return s.participant("b").Voted })
+
+	// Note: no reveal. The phase is still "voting", so alice's own view of bob's
+	// vote is "hidden".
+	send(r, alice, "new_round", map[string]interface{}{"story": "PP-2"})
+	awaitState(t, alice, func(s roomState) bool { return s.Story == "PP-2" })
+
+	if len(fs.saved) != 1 {
+		t.Fatalf("saved %d rounds, want 1", len(fs.saved))
+	}
+	if got := fs.saved[0].AverageVote; got != 6.5 {
+		t.Errorf("average = %v, want 6.5 (a masked vote was counted, or dropped)", got)
+	}
+}
+
+func TestRoundAverageIgnoresNonNumericVotes(t *testing.T) {
+	r, fs := newTestRoom(t)
+
+	alice, _ := join(t, r, "a", "Alice")
+	bob, _ := join(t, r, "b", "Bob")
+
+	send(r, alice, "vote", map[string]string{"card": "8"})
+	send(r, bob, "vote", map[string]string{"card": "☕"})
+	awaitState(t, alice, func(s roomState) bool { return s.participant("b").Voted })
+
+	send(r, alice, "new_round", map[string]interface{}{"story": "PP-2"})
+	awaitState(t, alice, func(s roomState) bool { return s.Story == "PP-2" })
+
+	if got := fs.saved[0].AverageVote; got != 8 {
+		t.Errorf("average = %v, want 8", got)
+	}
+	if len(fs.saved[0].Votes) != 2 {
+		t.Errorf("recorded %d votes, want 2 — non-numeric votes still count as cast", len(fs.saved[0].Votes))
 	}
 }
 
@@ -661,7 +732,7 @@ func TestStateUpdatesDoNotCarryHistory(t *testing.T) {
 	awaitHistory(t, alice) // the empty history every client gets on join
 
 	send(r, alice, "vote", map[string]string{"card": "5"})
-	send(r, alice, "new_round", map[string]interface{}{"story": "PP-2", "lastRoundAverage": 5.0})
+	send(r, alice, "new_round", map[string]interface{}{"story": "PP-2"})
 
 	// The round is now recorded, so history is non-empty...
 	recorded := awaitHistory(t, alice)
@@ -688,7 +759,7 @@ func TestJoiningClientReceivesHistory(t *testing.T) {
 	awaitState(t, alice, func(s roomState) bool { return s.Story == "PP-1" })
 
 	send(r, alice, "vote", map[string]string{"card": "5"})
-	send(r, alice, "new_round", map[string]interface{}{"story": "PP-2", "lastRoundAverage": 5.0})
+	send(r, alice, "new_round", map[string]interface{}{"story": "PP-2"})
 	awaitHistory(t, alice)
 
 	// Bob arrives after the round closed and must still see it.
@@ -719,7 +790,7 @@ func TestHistoryWindowIsCappedDuringALongSession(t *testing.T) {
 		awaitState(t, alice, func(s roomState) bool { return s.Story == story })
 
 		send(r, alice, "vote", map[string]string{"card": "5"})
-		send(r, alice, "new_round", map[string]interface{}{"story": "", "lastRoundAverage": 5.0})
+		send(r, alice, "new_round", map[string]interface{}{"story": ""})
 		history = awaitHistory(t, alice)
 	}
 
@@ -784,7 +855,7 @@ func TestClosingARoundBroadcastsHistoryToEveryone(t *testing.T) {
 	awaitState(t, alice, func(s roomState) bool { return s.Story == "PP-1" })
 
 	send(r, bob, "vote", map[string]string{"card": "3"})
-	send(r, alice, "new_round", map[string]interface{}{"story": "PP-2", "lastRoundAverage": 3.0})
+	send(r, alice, "new_round", map[string]interface{}{"story": "PP-2"})
 
 	// Bob did not close the round, but must still see it appear.
 	received := awaitHistory(t, bob)
