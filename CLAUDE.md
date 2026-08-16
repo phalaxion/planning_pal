@@ -49,16 +49,23 @@ employee.
 
 ## Gotchas
 
-- `broadcastStateToAll` rebuilds and re-serializes the **entire** payload once per
-  recipient. Vote masking is why. It should become one shared masked payload plus a small
-  private per-client message carrying that client's own vote.
+- `broadcastStateToAll` rebuilds and re-serializes the payload once per recipient, because
+  the vote masking differs per viewer. This is quadratic and **deliberately left alone**:
+  measured at 271 µs / 104 KB per broadcast for 20 participants, the stated ceiling
+  (`broadcast_bench_test.go`). It mattered when history rode along in every state update;
+  it does not now. Revisit only if rooms get much bigger — the fix is one shared masked
+  payload plus a small private per-client message carrying that client's own vote, which
+  costs a new message type and client-side vote state, so don't pay it speculatively.
 - `broadcastStateToAll` snapshots the participant list before delivering, so the broadcast
   that drops an unresponsive client still lists them. The eviction is only visible from the
   next broadcast onward.
 - `clientId` lives in `sessionStorage`, so identity survives a refresh but not a tab
   close. Two tabs means two identities sharing one name, which trips `name_taken`.
-- The deck contains sentinels that are not estimates: `?`, `☕`, and `999`
-  ("too large to quote"). Any averaging must exclude all three.
+- The deck contains sentinels. `?` and `☕` are excluded from averages. `999` ("this work
+  is too large to quote") is **deliberately included**: one such vote alongside three 5s
+  yields an average of 256, and that blow-up is exactly how the room notices someone
+  played it. This is intended behaviour — do not "correct" it, and do not backfill the
+  `AverageVote` values already stored.
 - SQLite's loose type affinity is currently hiding a schema mismatch — see below.
 
 ## Work queue
@@ -67,18 +74,13 @@ Ordered. Done so far: room state-machine tests, server-side facilitator enforcem
 `send`-channel lifecycle fix, the `state_update`/`history_update` split, the capped history
 window, and the honest CSV export.
 
-1. **Exclude `999` from averages** in both the results summary and the `new_round` payload.
-   `999` means "too large to quote", so averaging it as a number is wrong — one such vote
-   alongside three 5s yields 256. Persisted `AverageVote` values are wrong wherever a `999`
-   was cast.
-2. **Single-serialization broadcast** (see Gotchas).
-3. **`votes.vote` `REAL` → `TEXT` migration.** The column is declared `REAL`, stores text
+1. **`votes.vote` `REAL` → `TEXT` migration.** The column is declared `REAL`, stores text
    (`?`, `☕`), and is scanned back as a string. Fine under SQLite, breaks immediately
    under Postgres or any strict store.
-4. **Deck configurable per deployment** via env var or config file. Currently hardcoded in
+2. **Deck configurable per deployment** via env var or config file. Currently hardcoded in
    `frontend/room/room.js`. Per-room decks are the likely eventual answer, but there's no
    user asking yet.
-5. **Create the store directory on startup.** `make run` fails on a fresh clone: it points
+3. **Create the store directory on startup.** `make run` fails on a fresh clone: it points
    at `./data`, nothing creates it, and `data/` is gitignored. Self-hosters hit this on
    install. `os.MkdirAll` in the store constructors.
 
