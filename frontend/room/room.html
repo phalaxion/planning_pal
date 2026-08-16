@@ -20,7 +20,7 @@
 </head>
 
 <body>
-	<pre id="status" class="debug-data"></pre>
+	<pre id="status" class="debug-data" role="status" aria-live="polite"></pre>
 	<pre id="debug" class="debug-data">debug</pre>
 
 	<!-- Top bar -->
@@ -71,6 +71,7 @@
 			<div>
 				<div class="avg-label">Average</div>
 				<div class="avg-value" id="results-summary">—</div>
+				<div class="avg-caption" id="results-caption"></div>
 			</div>
 			<div id="results-rounded-wrap" style="display:none">
 				<div class="avg-label">Rounded</div>
@@ -98,7 +99,7 @@
 	<div id="story-modal"
 		style="display:none;position:fixed;inset:0;z-index:100;background:rgba(26,23,20,0.4);backdrop-filter:blur(4px);align-items:center;justify-content:center">
 		<div class="card" style="width:100%;max-width:420px;margin:24px">
-			<div style="font-family:var(--serif);font-size:22px;margin-bottom:16px">New round</div>
+			<div id="modal-title" style="font-family:var(--serif);font-size:22px;margin-bottom:16px">New round</div>
 			<label class="field-label" for="modal-story-input">Story label</label>
 			<div class="input-wrap">
 				<span class="input-icon">✦</span>

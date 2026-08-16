@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/beevik/guid"
@@ -136,7 +137,10 @@ func (r *Room) run() {
 			}
 
 			for _, existing := range r.participants {
-				if existing.id != c.id && existing.name == c.name {
+				// Case-insensitive: "Alice" and "alice" are indistinguishable in
+				// the participant list, and stored votes are keyed by name, so
+				// allowing both would split one person across two history columns.
+				if existing.id != c.id && strings.EqualFold(existing.name, c.name) {
 					c.handleError("name_taken", fmt.Sprintf("'%s' is already taken in the room. Please choose a different name.", c.name), true)
 					break roomAction
 				}
@@ -284,38 +288,48 @@ func (r *Room) handleClientMessage(c *Client, m models.Message) {
 			}
 		}
 
-		// The average is computed here, not taken from payload.LastRoundAverage.
-		// The client can only average what it can see, and during the voting
-		// phase everyone else's vote reads "hidden" — so a round closed without
-		// revealing first would record the facilitator's own vote as the
-		// average. The room is the only place the real votes exist.
-		result := models.RoundResult{
-			ID:          guid.New().String(),
-			Story:       r.story,
-			AverageVote: averageVote(votes),
-			Votes:       votes,
-			Timestamp:   time.Now().UTC(),
-		}
+		// A facilitator skipping past a story shouldn't leave a round behind with
+		// nothing in it — it would consume a slot in the capped history window
+		// and show as an empty row forever.
+		recorded := len(votes) > 0
 
-		if err := r.store.Save(r.ID, result); err != nil {
-			log.Printf("room %s - failed to save round result: %v", r.ID, err)
-			c.handleError("history_failed", fmt.Sprintf("Failed to save round result: %v", err), false)
-		}
+		if recorded {
+			// The average is computed here, not by the client. The client can
+			// only average what it can see, and during the voting phase everyone
+			// else's vote reads "hidden" — so a round closed without revealing
+			// first would record the facilitator's own vote as the average. The
+			// room is the only place the real votes exist.
+			result := models.RoundResult{
+				ID:          guid.New().String(),
+				Story:       r.story,
+				AverageVote: averageVote(votes),
+				Votes:       votes,
+				Timestamp:   time.Now().UTC(),
+			}
 
-		// Keep the window bounded regardless of how long a session runs. The
-		// tail is copied into a fresh slice rather than re-sliced so the dropped
-		// rounds do not stay reachable through the backing array.
-		r.history = append(r.history, result)
-		if len(r.history) > historyWindow {
-			trimmed := make([]models.RoundResult, historyWindow)
-			copy(trimmed, r.history[len(r.history)-historyWindow:])
-			r.history = trimmed
+			if err := r.store.Save(r.ID, result); err != nil {
+				log.Printf("room %s - failed to save round result: %v", r.ID, err)
+				c.handleError("history_failed", fmt.Sprintf("Failed to save round result: %v", err), false)
+			}
+
+			// Keep the window bounded regardless of how long a session runs. The
+			// tail is copied into a fresh slice rather than re-sliced so the
+			// dropped rounds do not stay reachable through the backing array.
+			r.history = append(r.history, result)
+			if len(r.history) > historyWindow {
+				trimmed := make([]models.RoundResult, historyWindow)
+				copy(trimmed, r.history[len(r.history)-historyWindow:])
+				r.history = trimmed
+			}
 		}
 
 		r.story = payload.Story
 		r.phase = "voting"
 		r.broadcastStateToAll()
-		r.broadcastHistoryToAll()
+
+		if recorded {
+			r.broadcastHistoryToAll()
+		}
 	case "set_story":
 		var payload struct {
 			Story string `json:"story"`

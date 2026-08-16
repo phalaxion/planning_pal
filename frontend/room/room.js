@@ -65,11 +65,20 @@
 	);
 
 	let __storyPrompted = false;
+	let __firstRender = true;
 
-	function showStoryModal(defaultVal = '') {
+	function showStoryModal(defaultVal = '', title = 'New round', confirmLabel = 'Start round →') {
 		return new Promise(resolve => {
 			const modal = qs('#story-modal')
 			const input = qs('#modal-story-input')
+
+			// The same modal asks two different questions — "what are we
+			// estimating next" and "this room has no story yet" — so it says
+			// which one it is.
+			const titleEl = qs('#modal-title')
+			if (titleEl) titleEl.textContent = title
+			qs('#modal-confirm').textContent = confirmLabel
+
 			input.value = defaultVal
 			modal.style.display = 'flex'
 			input.focus()
@@ -204,13 +213,18 @@
 		const youId = state.youId
 		const isFac = state.facilitatorId && youId && state.facilitatorId === youId
 
-		if (isFac && !state.story && !__storyPrompted) {
+		// Prompt for a story only when arriving into an empty room. Inheriting
+		// the role later — a handover, or the grace period expiring — used to
+		// throw this modal over someone who was quietly participating; they can
+		// use Edit instead.
+		if (__firstRender && isFac && !state.story && !__storyPrompted) {
 			__storyPrompted = true
 			setTimeout(async () => {
-				const story = await showStoryModal()
+				const story = await showStoryModal('', 'Set the story', 'Set story →')
 				if (story) ws.send('set_story', { story })
 			}, 300)
 		}
+		__firstRender = false
 
 		// ── Story ──────────────────────────────────────────────────
 		const storyEl = qs('#story')
@@ -443,6 +457,18 @@
 			roundedWrap.style.display = 'none'
 		}
 
+		// An average of two numbers out of six people looks like more agreement
+		// than it is, so say how many votes are actually behind it.
+		const captionEl = qs('#results-caption')
+		if (captionEl) {
+			const cast = state.participants.filter(p => p.voted).length
+			captionEl.textContent = !nums.length
+				? 'no numeric votes'
+				: nums.length === cast
+					? `from ${nums.length} vote${nums.length === 1 ? '' : 's'}`
+					: `from ${nums.length} of ${cast} votes`
+		}
+
 		// The average alone hides disagreement — 1,3,13 and 5,6,6 average about
 		// the same, and only one of them is worth talking about.
 		if (nums.length) {
@@ -461,6 +487,8 @@
 		consensusBadge.style.visibility = 'hidden';
 		spreadEl.style.display = 'none';
 		qs('#results-rounded-wrap').style.display = 'none';
+		const captionEl = qs('#results-caption')
+		if (captionEl) captionEl.textContent = ''
 		}
 
 		// ── Debug ──────────────────────────────────────────────────

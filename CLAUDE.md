@@ -98,6 +98,12 @@ employee.
 - `999` ("this work is too large to quote") is a sentinel that is **deliberately averaged
   as a number**: one such vote alongside three 5s yields 256, and that blow-up is exactly
   how the room notices someone played it. This is intended — do not "correct" it.
+- **A round with no votes is not recorded.** Skipping past a story is normal, and saving
+  the empty round would burn a slot in the ten-round window and leave a permanent blank row.
+  The round still advances; only persistence is skipped.
+- Display names are unique **case-insensitively** (`strings.EqualFold`). Stored votes are
+  keyed by name, so allowing `Alice` and `alice` would split one person into two history
+  columns while looking identical in the participant list.
 - During the facilitator's grace period the room genuinely has no facilitator, so every
   client hides the controls. `awaitingFacilitator` carries the departed facilitator's name
   through that window purely so the UI can explain itself; it changes nothing about

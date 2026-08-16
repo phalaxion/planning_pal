@@ -328,6 +328,12 @@ body {
     line-height: 1;
 }
 
+.avg-caption {
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-top: 4px;
+}
+
 .results-spread {
     display: flex;
     gap: 20px;

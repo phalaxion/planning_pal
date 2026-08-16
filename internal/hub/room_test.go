@@ -308,6 +308,25 @@ func TestDuplicateNameIsRejected(t *testing.T) {
 	}
 }
 
+func TestDuplicateNameIsRejectedRegardlessOfCase(t *testing.T) {
+	r, _ := newTestRoom(t)
+
+	join(t, r, "a", "Alice")
+
+	impostor := newTestClient("b", "alice")
+	r.register <- impostor
+
+	if code := awaitError(t, impostor); code != "name_taken" {
+		t.Errorf("error code = %q, want %q", code, "name_taken")
+	}
+
+	_, state := join(t, r, "c", "Carol")
+
+	if len(state.Participants) != 2 {
+		t.Errorf("participant count = %d, want 2 — a case variant got in", len(state.Participants))
+	}
+}
+
 // ── Reconnect ───────────────────────────────────────────────────────────────
 
 func TestReconnectWithSameClientIDReplacesConnection(t *testing.T) {
@@ -776,6 +795,42 @@ func TestRoundAverageIgnoresNonNumericVotes(t *testing.T) {
 	}
 	if len(fs.saved[0].Votes) != 2 {
 		t.Errorf("recorded %d votes, want 2 — non-numeric votes still count as cast", len(fs.saved[0].Votes))
+	}
+}
+
+// Skipping past a story shouldn't burn a slot in the capped history window.
+func TestARoundWithNoVotesIsNotRecorded(t *testing.T) {
+	r, fs := newTestRoom(t)
+
+	alice, _ := join(t, r, "a", "Alice")
+	awaitHistory(t, alice)
+
+	send(r, alice, "set_story", map[string]string{"story": "PP-1"})
+	awaitState(t, alice, func(s roomState) bool { return s.Story == "PP-1" })
+
+	// Nobody voted. Move on anyway.
+	send(r, alice, "new_round", map[string]interface{}{"story": "PP-2"})
+	state := awaitState(t, alice, func(s roomState) bool { return s.Story == "PP-2" })
+
+	if len(fs.saved) != 0 {
+		t.Errorf("persisted %d rounds, want 0: %+v", len(fs.saved), fs.saved)
+	}
+	if state.Phase != "voting" {
+		t.Errorf("phase = %q, want %q — the round should still advance", state.Phase, "voting")
+	}
+
+	// And a real round afterwards is still recorded normally.
+	send(r, alice, "vote", map[string]string{"card": "5"})
+	awaitState(t, alice, func(s roomState) bool { return s.participant("a").Voted })
+
+	send(r, alice, "new_round", map[string]interface{}{"story": "PP-3"})
+	recorded := awaitHistory(t, alice)
+
+	if len(fs.saved) != 1 {
+		t.Fatalf("persisted %d rounds, want 1", len(fs.saved))
+	}
+	if len(recorded) != 1 || recorded[0].Story != "PP-2" {
+		t.Errorf("history = %+v, want one round for PP-2", recorded)
 	}
 }
 
