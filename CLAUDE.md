@@ -64,29 +64,27 @@ employee.
 ## Work queue
 
 Ordered. Done so far: room state-machine tests, server-side facilitator enforcement, the
-`send`-channel lifecycle fix, the `state_update`/`history_update` split, and the capped
-history window.
+`send`-channel lifecycle fix, the `state_update`/`history_update` split, the capped history
+window, and the honest CSV export.
 
-1. **Demote the CSV export.** It builds from the client's `history`, which is now capped at
-   ten rounds, so it silently exports the last ten while looking complete. Relabel or
-   remove until the full-history view exists.
-2. **Exclude `999` from averages** in both the results summary and the `new_round` payload.
+1. **Exclude `999` from averages** in both the results summary and the `new_round` payload.
    `999` means "too large to quote", so averaging it as a number is wrong — one such vote
    alongside three 5s yields 256. Persisted `AverageVote` values are wrong wherever a `999`
    was cast.
-3. **Single-serialization broadcast** (see Gotchas).
-4. **`votes.vote` `REAL` → `TEXT` migration.** The column is declared `REAL`, stores text
+2. **Single-serialization broadcast** (see Gotchas).
+3. **`votes.vote` `REAL` → `TEXT` migration.** The column is declared `REAL`, stores text
    (`?`, `☕`), and is scanned back as a string. Fine under SQLite, breaks immediately
    under Postgres or any strict store.
-5. **Deck configurable per deployment** via env var or config file. Currently hardcoded in
+4. **Deck configurable per deployment** via env var or config file. Currently hardcoded in
    `frontend/room/room.js`. Per-room decks are the likely eventual answer, but there's no
    user asking yet.
-6. **Create the store directory on startup.** `make run` fails on a fresh clone: it points
+5. **Create the store directory on startup.** `make run` fails on a fresh clone: it points
    at `./data`, nothing creates it, and `data/` is gitignored. Self-hosters hit this on
    install. `os.MkdirAll` in the store constructors.
 
-Deferred by decision, not oversight: pagination and a full-history view (needed before the
-CSV export can be honest), per-room decks, room passphrases and invite tokens, SSO.
+Deferred by decision, not oversight: pagination and a full-history view (which would also
+let the export cover more than the window), per-room decks, room passphrases and invite
+tokens, SSO.
 
 ## Known-open, deliberately unscheduled
 

@@ -141,6 +141,39 @@ import Connection from "../core/Connection.js";
 		})
 	}
 
+	// ── Export ─────────────────────────────────────────────────────
+	// Exports only the rounds currently in memory. The server sends a capped
+	// window, so this is deliberately partial — the button says so.
+	function exportRecentRounds() {
+		if (!history.length) return
+
+		// Who was in the room changes between rounds, and people who did not vote
+		// are not recorded at all. So the columns are the union of every name
+		// seen, and each cell is filled by lookup rather than by position.
+		const names = []
+		history.forEach(h => Object.keys(h.votes || {}).forEach(n => {
+			if (!names.includes(n)) names.push(n)
+		}))
+		names.sort((a, b) => a.localeCompare(b))
+
+		const rows = [['Story', 'Timestamp', ...names]]
+		history.forEach(h => rows.push([
+			h.story || '',
+			new Date(h.timestamp).toLocaleString(),
+			...names.map(n => (h.votes || {})[n] ?? '')
+		]))
+
+		const csv = rows
+			.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+			.join('\n')
+
+		const a = Object.assign(document.createElement('a'), {
+			href: 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv),
+			download: `poker-${roomId}-recent.csv`
+		})
+		a.click()
+	}
+
 	function renderRoom(state) {
 		const youId = state.youId
 		const isFac = state.facilitatorId && youId && state.facilitatorId === youId
@@ -260,14 +293,9 @@ import Connection from "../core/Connection.js";
 
 		const exportBtn = document.createElement('button')
 		exportBtn.className = 'btn btn-ghost'
-		exportBtn.textContent = '↓ Export CSV'
-		exportBtn.onclick = () => {
-		const rows = [['Story', 'Timestamp', ...(history[0] ? Object.keys(history[0].votes) : [])]]
-		history.forEach(h => rows.push([h.story, new Date(h.timestamp).toLocaleString(), ...Object.values(h.votes || {})]))
-		const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n')
-		const a = Object.assign(document.createElement('a'), { href: 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv), download: `poker-${roomId}.csv` })
-		a.click()
-		}
+		exportBtn.textContent = '↓ Export recent rounds'
+		exportBtn.title = 'Exports the rounds shown below. Older rounds are kept on the server but cannot be exported yet.'
+		exportBtn.onclick = exportRecentRounds
 		actions.appendChild(exportBtn)
 
 		actions.style.display = isFac ? 'flex' : 'none';
